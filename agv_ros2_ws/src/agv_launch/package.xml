@@ -20,6 +20,7 @@
   <depend>agv_power_manager</depend>
   <depend>agv_path_planner</depend>
   <depend>agv_video_stream</depend>
+  <depend>agv_3d_scanner</depend>
 
   <export>
     <build_type>ament_cmake</build_type>

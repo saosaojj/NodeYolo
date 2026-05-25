@@ -7,8 +7,8 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, field_validator
 from typing import List, Optional
 
-from agv_interfaces.msg import AGVStatus, PlcData, IOState, YoloResult, WiFiStatus, BluetoothDevice, BatteryState
-from agv_interfaces.srv import ControlAGV, ReadPlc, WritePlc, SetIO, TrainModel, ConnectWiFi, ConnectBluetooth, SetCharging, SetModel
+from agv_interfaces.msg import AGVStatus, PlcData, IOState, YoloResult, WiFiStatus, BluetoothDevice, BatteryState, Scan3DData
+from agv_interfaces.srv import ControlAGV, ReadPlc, WritePlc, SetIO, TrainModel, ConnectWiFi, ConnectBluetooth, SetCharging, SetModel, GenerateScanMap, StartScan
 from agv_interfaces.action import NavigateTo, Patrol
 from geometry_msgs.msg import Twist
 from std_srvs.srv import Trigger
@@ -201,6 +201,7 @@ def create_api_router(ros_bridge):
     ros_bridge.create_subscription('/wifi_status', WiFiStatus)
     ros_bridge.create_accumulating_subscription('/bluetooth_devices', BluetoothDevice, 'address')
     ros_bridge.create_subscription('/battery_state', BatteryState)
+    ros_bridge.create_subscription('/scan_3d_data', Scan3DData)
 
     ros_bridge.create_publisher('/cmd_vel', Twist)
 
@@ -583,5 +584,59 @@ def create_api_router(ros_bridge):
         except asyncio.TimeoutError:
             raise HTTPException(status_code=504, detail='Service /set_power_mode timed out')
         return {'success': response.success, 'message': response.message}
+
+    @router.get('/scan3d/points')
+    async def get_scan_points():
+        cached = _get_cached_response('scan_points')
+        if cached is not None:
+            return cached
+        msg = ros_bridge.get_latest_message('/scan_3d_data')
+        if msg is None:
+            return {'points_x': [], 'points_y': [], 'points_z': [], 'num_points': 0}
+        result = _msg_to_dict(msg)
+        _set_cached_response('scan_points', result)
+        return result
+
+    @router.post('/scan3d/start')
+    async def start_scan(body: dict):
+        future = ros_bridge.call_service('/start_scan', StartScan, {
+            'scan_pattern': body.get('scan_pattern', 'path'),
+            'scan_resolution': body.get('scan_resolution', 0.05),
+            'max_points': body.get('max_points', 100000),
+        })
+        if future is None:
+            raise HTTPException(status_code=503, detail='Service /start_scan not available')
+        try:
+            response = await asyncio.wait_for(asyncio.wrap_future(future), timeout=10.0)
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=504, detail='Service /start_scan timed out')
+        return {'success': response.success, 'message': response.message}
+
+    @router.post('/scan3d/stop')
+    async def stop_scan():
+        future = ros_bridge.call_service('/stop_scan', Trigger, {})
+        if future is None:
+            raise HTTPException(status_code=503, detail='Service /stop_scan not available')
+        try:
+            response = await asyncio.wait_for(asyncio.wrap_future(future), timeout=10.0)
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=504, detail='Service /stop_scan timed out')
+        return {'success': response.success, 'message': response.message}
+
+    @router.post('/scan3d/generate_map')
+    async def generate_map(body: dict):
+        future = ros_bridge.call_service('/generate_scan_map', GenerateScanMap, {
+            'map_name': body.get('map_name', 'path_scan'),
+            'export_path': body.get('export_path', '/tmp'),
+            'format': body.get('format', 'xyz'),
+            'include_path': body.get('include_path', True),
+        })
+        if future is None:
+            raise HTTPException(status_code=503, detail='Service /generate_scan_map not available')
+        try:
+            response = await asyncio.wait_for(asyncio.wrap_future(future), timeout=30.0)
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=504, detail='Service /generate_scan_map timed out')
+        return {'success': response.success, 'message': response.message, 'output_file': response.output_file, 'total_points': response.total_points, 'process_time': response.process_time}
 
     return router

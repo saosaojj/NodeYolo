@@ -51,6 +51,9 @@
           <a class="nav-item" data-page="pathplan">
             <span>🛤️</span> 路径规划
           </a>
+          <a class="nav-item" data-page="scan3d">
+            <span>📡</span> 3D扫描
+          </a>
         </div>
         <div class="nav-section">
           <div class="nav-section-title">连接</div>
@@ -606,6 +609,120 @@
           <div class="card" style="margin-top: 16px;">
             <div class="card-header">📊 电量历史曲线</div>
             <canvas id="powerChartCanvas" style="width:100%;height:200px;background:var(--bg-surface);border-radius:var(--radius-md);"></canvas>
+          </div>
+        </div>
+
+        <div class="page" id="page-scan3d">
+          <div class="page-header">
+            <h2>3D路径扫描</h2>
+            <div class="page-header-actions">
+              <button class="btn btn-primary" id="startScanning">▶️ 开始扫描</button>
+              <button class="btn btn-warning" id="stopScanning">⏹️ 停止扫描</button>
+              <button class="btn btn-secondary" id="generateMap">🗺️ 生成扫描图</button>
+            </div>
+          </div>
+          
+          <div class="hero-stats">
+            <div class="stat-card">
+              <div class="stat-card-header">
+                <span class="stat-label">扫描状态</span>
+                <div class="stat-icon">📡</div>
+              </div>
+              <div class="stat-value" id="scanStatus">空闲</div>
+              <span class="stat-change positive" id="scanStatusChange">就绪</span>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-header">
+                <span class="stat-label">已采集点</span>
+                <div class="stat-icon">📍</div>
+              </div>
+              <div class="stat-value"><span id="pointCount">0</span><span class="stat-unit">点</span></div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-header">
+                <span class="stat-label">扫描帧数</span>
+                <div class="stat-icon">🎬</div>
+              </div>
+              <div class="stat-value"><span id="frameCount">0</span><span class="stat-unit">帧</span></div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-header">
+                <span class="stat-label">扫描时长</span>
+                <div class="stat-icon">⏱️</div>
+              </div>
+              <div class="stat-value"><span id="scanDuration">00:00</span></div>
+            </div>
+          </div>
+
+          <div class="card-grid cols-2">
+            <div class="card" style="grid-column: span 2;">
+              <div class="card-header">🎨 3D点云可视化</div>
+              <div class="camera-feed" id="pointCloudViewer">
+                <canvas id="pointCloudCanvas" style="width:100%;height:400px;background:#0a0e17;border-radius:12px;"></canvas>
+                <div class="empty-state" id="pointCloudEmpty">等待点云数据...</div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-header">⚙️ 扫描参数</div>
+              <div class="form-group">
+                <label>扫描模式</label>
+                <select class="input-field" id="scanPattern">
+                  <option value="rectangular">矩形扫描</option>
+                  <option value="circular">圆形扫描</option>
+                  <option value="path">沿路径扫描</option>
+                  <option value="random">随机扫描</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>扫描分辨率 (m)</label>
+                <input type="number" class="input-field" id="scanResolution" step="0.01" value="0.05">
+              </div>
+              <div class="form-group">
+                <label>最大点数量</label>
+                <input type="number" class="input-field" id="maxPoints" value="100000">
+              </div>
+              <div class="form-group">
+                <label>导出格式</label>
+                <select class="input-field" id="exportFormat">
+                  <option value="xyz">XYZ</option>
+                  <option value="pcd">PCD</option>
+                  <option value="ply">PLY</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>地图名称</label>
+                <input type="text" class="input-field" id="mapName" value="path_scan">
+              </div>
+              <div class="btn-group" style="margin-top: 10px;">
+                <button class="btn btn-primary" id="clearPoints" style="flex:1;">🗑️ 清空点云</button>
+                <button class="btn btn-secondary" id="exportMap" style="flex:1;">📤 导出地图</button>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-header">📊 扫描数据</div>
+              <div class="position-display">
+                <div class="pos-item">
+                  <span class="pos-label">X范围</span>
+                  <span class="pos-value" id="xRange">--</span>
+                </div>
+                <div class="pos-item">
+                  <span class="pos-label">Y范围</span>
+                  <span class="pos-value" id="yRange">--</span>
+                </div>
+                <div class="pos-item">
+                  <span class="pos-label">Z范围</span>
+                  <span class="pos-value" id="zRange">--</span>
+                </div>
+                <div class="pos-item">
+                  <span class="pos-label">点密度</span>
+                  <span class="pos-value" id="density">--</span>
+                </div>
+                <div class="pos-item">
+                  <span class="pos-label">内存占用</span>
+                  <span class="pos-value" id="memoryUsage">--</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 

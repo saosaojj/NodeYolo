@@ -119,6 +119,13 @@ def generate_launch_description():
             'use_server': 'True',
         }.items())
 
+    scan3d_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(
+                get_package_share_directory('agv_3d_scanner'),
+                'launch',
+                '3d_scanner.launch.py')))
+
     return LaunchDescription([
         simulation_arg,
         use_camera_arg,
@@ -134,4 +141,5 @@ def generate_launch_description():
         power_manager_launch,
         path_planner_launch,
         video_stream_launch,
+        scan3d_launch,
     ])

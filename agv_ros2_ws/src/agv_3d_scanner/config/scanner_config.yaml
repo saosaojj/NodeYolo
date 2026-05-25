@@ -1,0 +1,16 @@
+scanner_node:
+  ros__parameters:
+    scan_resolution: 0.05
+    max_points_per_scan: 10000
+    chunk_size: 4096
+    frame_id: "scanner_link"
+
+point_cloud_manager:
+  ros__parameters:
+    voxel_size: 0.05
+    max_memory_points: 1000000
+
+map_exporter:
+  ros__parameters:
+    default_export_path: "/tmp/agv_maps"
+    default_format: "pcd"

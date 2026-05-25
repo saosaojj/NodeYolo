@@ -1,0 +1,6 @@
+string scan_pattern
+float64 scan_resolution
+uint32 max_points
+---
+bool success
+string message

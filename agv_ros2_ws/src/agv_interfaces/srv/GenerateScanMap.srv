@@ -1,0 +1,10 @@
+string map_name
+string export_path
+string format
+bool include_path
+---
+bool success
+string message
+string output_file
+uint32 total_points
+float64 process_time

@@ -961,6 +961,235 @@ function initPowerManagement() {
   }, 3000));
 }
 
+function init3dScanner() {
+  appState.pointCloud = {
+    points: [],
+    xMin: Infinity,
+    xMax: -Infinity,
+    yMin: Infinity,
+    yMax: -Infinity,
+    zMin: Infinity,
+    zMax: -Infinity,
+    frameCount: 0,
+    isScanning: false,
+    startTime: null,
+    rotation: { yaw: 0, pitch: 0 },
+    zoom: 1
+  };
+
+  function updateScanPage() {
+    var pc = appState.pointCloud;
+    document.getElementById('pointCount').textContent = pc.points.length;
+    document.getElementById('frameCount').textContent = pc.frameCount;
+    
+    if (pc.startTime && pc.isScanning) {
+      var elapsed = Math.floor((Date.now() - pc.startTime) / 1000);
+      var mins = Math.floor(elapsed / 60).toString().padStart(2, '0');
+      var secs = (elapsed % 60).toString().padStart(2, '0');
+      document.getElementById('scanDuration').textContent = mins + ':' + secs;
+    }
+
+    if (pc.points.length > 0) {
+      var fmt = function(v) { return v.toFixed(3); };
+      document.getElementById('xRange').textContent = fmt(pc.xMin) + ' ~ ' + fmt(pc.xMax);
+      document.getElementById('yRange').textContent = fmt(pc.yMin) + ' ~ ' + fmt(pc.yMax);
+      document.getElementById('zRange').textContent = fmt(pc.zMin) + ' ~ ' + fmt(pc.zMax);
+      
+      var vol = (pc.xMax - pc.xMin) * (pc.yMax - pc.yMin) * (pc.zMax - pc.zMin);
+      var density = vol > 0 ? (pc.points.length / vol).toFixed(1) : '0';
+      document.getElementById('density').textContent = density + ' pts/m³';
+      
+      var memoryMB = (pc.points.length * 3 * 4 / (1024 * 1024)).toFixed(2);
+      document.getElementById('memoryUsage').textContent = memoryMB + ' MB';
+      
+      document.getElementById('pointCloudEmpty').style.display = 'none';
+    } else {
+      document.getElementById('pointCloudEmpty').style.display = 'block';
+    }
+  }
+
+  function renderPointCloud() {
+    var canvas = document.getElementById('pointCloudCanvas');
+    var ctx = canvas.getContext('2d');
+    var pc = appState.pointCloud;
+    
+    var w = canvas.width = canvas.offsetWidth;
+    var h = canvas.height = canvas.offsetHeight;
+    ctx.clearRect(0, 0, w, h);
+    
+    if (pc.points.length === 0) return;
+    
+    var centerX = (pc.xMin + pc.xMax) / 2;
+    var centerY = (pc.yMin + pc.yMax) / 2;
+    var centerZ = (pc.zMin + pc.zMax) / 2;
+    
+    var scaleX = (w * 0.4) / Math.max(1, Math.max(pc.xMax - centerX, centerX - pc.xMin));
+    var scaleY = (h * 0.4) / Math.max(1, Math.max(pc.yMax - centerY, centerY - pc.yMin));
+    var scale = Math.min(scaleX, scaleY) * pc.zoom;
+    
+    var yaw = pc.rotation.yaw;
+    var pitch = pc.rotation.pitch;
+    var cosY = Math.cos(yaw), sinY = Math.sin(yaw);
+    var cosP = Math.cos(pitch), sinP = Math.sin(pitch);
+    
+    for (var i = 0; i < pc.points.length; i++) {
+      var p = pc.points[i];
+      var x = p.x - centerX;
+      var y = p.y - centerY;
+      var z = p.z - centerZ;
+      
+      var x1 = x * cosY - y * sinY;
+      var y1 = x * sinY + y * cosY;
+      var y2 = y1 * cosP - z * sinP;
+      var z2 = y1 * sinP + z * cosP;
+      
+      var px = w/2 + x1 * scale;
+      var py = h/2 - y2 * scale;
+      
+      var depth = (z2 - pc.zMin) / Math.max(1, pc.zMax - pc.zMin);
+      var r = Math.floor(100 + depth * 155);
+      var g = Math.floor(200 - depth * 100);
+      var b = Math.floor(100 + depth * 100);
+      
+      ctx.fillStyle = 'rgb(' + r + ',' + g + ',' + b + ')';
+      ctx.beginPath();
+      ctx.arc(px, py, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    ctx.fillStyle = 'rgba(0, 212, 170, 0.8)';
+    ctx.beginPath();
+    ctx.arc(w/2, h/2, 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function addPoints(data) {
+    var pc = appState.pointCloud;
+    if (!data.points_x || data.points_x.length === 0) return;
+    
+    for (var i = 0; i < data.points_x.length; i++) {
+      var x = data.points_x[i];
+      var y = data.points_y[i];
+      var z = data.points_z[i];
+      pc.points.push({x: x, y: y, z: z});
+      pc.xMin = Math.min(pc.xMin, x);
+      pc.xMax = Math.max(pc.xMax, x);
+      pc.yMin = Math.min(pc.yMin, y);
+      pc.yMax = Math.max(pc.yMax, y);
+      pc.zMin = Math.min(pc.zMin, z);
+      pc.zMax = Math.max(pc.zMax, z);
+    }
+    pc.frameCount++;
+    updateScanPage();
+  }
+
+  document.getElementById('startScanning').addEventListener('click', function() {
+    apiPost('/api/v1/scan3d/start', {
+      scan_pattern: document.getElementById('scanPattern').value,
+      scan_resolution: parseFloat(document.getElementById('scanResolution').value),
+      max_points: parseInt(document.getElementById('maxPoints').value)
+    }).then(function(res) {
+      if (res.success) {
+        appState.pointCloud.isScanning = true;
+        appState.pointCloud.startTime = Date.now();
+        document.getElementById('scanStatus').textContent = '扫描中';
+        document.getElementById('scanStatusChange').textContent = '运行中';
+        showToast('开始3D扫描', 'success');
+      }
+    }).catch(function() {});
+  });
+
+  document.getElementById('stopScanning').addEventListener('click', function() {
+    apiPost('/api/v1/scan3d/stop', {}).then(function() {
+      appState.pointCloud.isScanning = false;
+      document.getElementById('scanStatus').textContent = '已停止';
+      document.getElementById('scanStatusChange').textContent = '就绪';
+      showToast('停止3D扫描', 'info');
+    }).catch(function() {});
+  });
+
+  document.getElementById('generateMap').addEventListener('click', function() {
+    apiPost('/api/v1/scan3d/generate_map', {
+      map_name: document.getElementById('mapName').value,
+      export_path: '/tmp',
+      format: document.getElementById('exportFormat').value,
+      include_path: true
+    }).then(function(res) {
+      if (res.success) {
+        showToast('扫描图已生成: ' + res.output_file, 'success');
+      }
+    }).catch(function() {});
+  });
+
+  document.getElementById('clearPoints').addEventListener('click', function() {
+    appState.pointCloud.points = [];
+    appState.pointCloud.xMin = Infinity;
+    appState.pointCloud.xMax = -Infinity;
+    appState.pointCloud.yMin = Infinity;
+    appState.pointCloud.yMax = -Infinity;
+    appState.pointCloud.zMin = Infinity;
+    appState.pointCloud.zMax = -Infinity;
+    appState.pointCloud.frameCount = 0;
+    updateScanPage();
+    showToast('点云已清空', 'info');
+  });
+
+  document.getElementById('exportMap').addEventListener('click', function() {
+    apiPost('/api/v1/scan3d/generate_map', {
+      map_name: document.getElementById('mapName').value,
+      export_path: '/tmp',
+      format: document.getElementById('exportFormat').value,
+      include_path: true
+    }).then(function(res) {
+      if (res.success) {
+        showToast('地图已导出: ' + res.output_file, 'success');
+      }
+    }).catch(function() {});
+  });
+
+  var canvas = document.getElementById('pointCloudCanvas');
+  var isDragging = false, lastX, lastY;
+  canvas.addEventListener('mousedown', function(e) {
+    isDragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+  });
+  canvas.addEventListener('mousemove', function(e) {
+    if (isDragging) {
+      var dx = e.clientX - lastX;
+      var dy = e.clientY - lastY;
+      appState.pointCloud.rotation.yaw += dx * 0.01;
+      appState.pointCloud.rotation.pitch += dy * 0.01;
+      lastX = e.clientX;
+      lastY = e.clientY;
+    }
+  });
+  canvas.addEventListener('mouseup', function() { isDragging = false; });
+  canvas.addEventListener('mouseleave', function() { isDragging = false; });
+  canvas.addEventListener('wheel', function(e) {
+    e.preventDefault();
+    var zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+    appState.pointCloud.zoom *= zoomFactor;
+    appState.pointCloud.zoom = Math.max(0.1, Math.min(10, appState.pointCloud.zoom));
+  });
+
+  var pcRenderLoop;
+  function runRenderLoop() {
+    renderPointCloud();
+    updateScanPage();
+    pcRenderLoop = requestAnimationFrame(runRenderLoop);
+  }
+  runRenderLoop();
+
+  pollIntervals.push(setInterval(function() {
+    apiGet('/api/v1/scan3d/points').then(function(data) {
+      if (data && data.points_x) {
+        addPoints(data);
+      }
+    }).catch(function() {});
+  }, 500));
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   initNavigation();
   initSliders();
@@ -969,6 +1198,7 @@ document.addEventListener('DOMContentLoaded', function() {
   renderWaypoints();
   renderRos2Nodes([]);
   initPowerManagement();
+  init3dScanner();
 
   addLog('System initialized', 'info');
 

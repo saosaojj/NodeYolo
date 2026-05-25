@@ -17,6 +17,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/WiFiStatus.msg"
   "msg/BluetoothDevice.msg"
   "msg/BatteryState.msg"
+  "msg/Scan3DData.msg"
+  "msg/PointCloudChunk.msg"
   "srv/ReadPlc.srv"
   "srv/WritePlc.srv"
   "srv/SetIO.srv"
@@ -27,6 +29,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/SetModel.srv"
   "srv/SetConfidence.srv"
   "srv/SetCharging.srv"
+  "srv/GenerateScanMap.srv"
+  "srv/StartScan.srv"
   "action/NavigateTo.action"
   "action/Patrol.action"
   DEPENDENCIES builtin_interfaces geometry_msgs std_msgs sensor_msgs

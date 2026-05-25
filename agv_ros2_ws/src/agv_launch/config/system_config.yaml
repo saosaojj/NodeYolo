@@ -1,0 +1,6 @@
+system:
+  ros__parameters:
+    simulation: true
+    namespace: "agv"
+    web_port: 8080
+    log_level: "info"

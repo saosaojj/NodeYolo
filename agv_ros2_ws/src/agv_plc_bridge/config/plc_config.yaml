@@ -1,0 +1,28 @@
+plc_manager:
+  ros__parameters:
+    poll_rate_ms: 100
+    devices:
+      siemens_s7:
+        ip: "192.168.1.10"
+        port: 502
+        slave_id: 1
+        coil_read_start: 0
+        coil_read_count: 64
+        register_read_start: 0
+        register_read_count: 64
+      mitsubishi_q:
+        ip: "192.168.1.11"
+        port: 502
+        slave_id: 1
+        coil_read_start: 0
+        coil_read_count: 32
+        register_read_start: 0
+        register_read_count: 32
+      omron_nj:
+        ip: "192.168.1.12"
+        port: 502
+        slave_id: 1
+        coil_read_start: 0
+        coil_read_count: 16
+        register_read_start: 0
+        register_read_count: 16

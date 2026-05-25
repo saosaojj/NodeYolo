@@ -1,0 +1,11 @@
+wifi_manager:
+  ros__parameters:
+    check_rate: 5.0
+    interface: "wlan0"
+    auto_reconnect: true
+
+bluetooth_manager:
+  ros__parameters:
+    scan_rate: 10.0
+    adapter: "hci0"
+    auto_connect_paired: false

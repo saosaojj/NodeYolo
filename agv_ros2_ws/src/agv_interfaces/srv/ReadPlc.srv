@@ -1,0 +1,8 @@
+string device_name
+string ip_address
+int32 start_address
+int32 quantity
+---
+bool success
+string message
+int32[] values

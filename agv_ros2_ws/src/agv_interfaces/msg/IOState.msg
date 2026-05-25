@@ -1,0 +1,5 @@
+string io_name
+string io_type
+int32 pin_number
+float64 value
+bool state

@@ -1,0 +1,7 @@
+web_server:
+  ros__parameters:
+    host: "0.0.0.0"
+    port: 8080
+    cors_origins:
+      - "*"
+    jwt_secret: "agv_secret_key_change_in_production"

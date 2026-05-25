@@ -1,0 +1,25 @@
+agv_controller:
+  ros__parameters:
+    wheel_base: 0.5
+    max_linear_vel: 1.0
+    max_angular_vel: 1.0
+    kp_linear: 1.0
+    kp_angular: 2.0
+    kd_linear: 0.1
+    kd_angular: 0.3
+    control_rate: 50.0
+
+agv_navigator:
+  ros__parameters:
+    goal_tolerance_xy: 0.1
+    goal_tolerance_theta: 0.1
+    obstacle_distance_threshold: 0.3
+
+agv_odometry:
+  ros__parameters:
+    publish_rate: 50.0
+    frame_id: "odom"
+    child_frame_id: "base_link"
+    initial_x: 0.0
+    initial_y: 0.0
+    initial_theta: 0.0

@@ -1,0 +1,6 @@
+string ssid
+string password
+---
+bool success
+string message
+string ip_address

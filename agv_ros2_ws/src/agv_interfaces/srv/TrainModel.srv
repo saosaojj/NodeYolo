@@ -1,0 +1,10 @@
+string dataset_path
+string model_type
+int32 epochs
+float64 learning_rate
+string output_path
+---
+bool success
+string message
+string model_path
+float64 training_time

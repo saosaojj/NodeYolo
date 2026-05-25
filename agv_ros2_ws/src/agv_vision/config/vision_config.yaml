@@ -1,0 +1,27 @@
+yolo_detector:
+  ros__parameters:
+    model_path: "yolov8n.pt"
+    confidence_threshold: 0.5
+    iou_threshold: 0.45
+    device: "cpu"
+    publish_rate: 30.0
+    input_topic: "/camera/image_raw"
+    classes_filter: []
+
+yolo_trainer:
+  ros__parameters:
+    default_epochs: 100
+    default_learning_rate: 0.01
+    default_model_type: "yolov8n"
+    default_imgsz: 640
+    dataset_base_path: "/tmp/agv_datasets"
+    model_output_path: "/tmp/agv_models"
+
+camera:
+  ros__parameters:
+    camera_device: 0
+    fps: 30
+    frame_width: 640
+    frame_height: 480
+    use_rtsp: false
+    rtsp_url: ""

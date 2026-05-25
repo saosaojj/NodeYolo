@@ -1,0 +1,13 @@
+float64[] waypoints_x
+float64[] waypoints_y
+float64[] waypoints_theta
+int32 loops
+---
+bool success
+string message
+int32 completed_loops
+---
+float64 current_x
+float64 current_y
+int32 current_waypoint_index
+int32 completed_loops

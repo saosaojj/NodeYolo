@@ -1,0 +1,81 @@
+io_controller:
+  ros__parameters:
+    poll_rate_ms: 100
+    simulate: true
+    io_points:
+      digital_inputs:
+        - name: "emergency_stop"
+          pin: 0
+          type: "digital_in"
+        - name: "safety_light_curtain"
+          pin: 1
+          type: "digital_in"
+        - name: "charge_contact"
+          pin: 2
+          type: "digital_in"
+        - name: "lift_position_top"
+          pin: 3
+          type: "digital_in"
+        - name: "lift_position_bottom"
+          pin: 4
+          type: "digital_in"
+        - name: "obstacle_sensor_front"
+          pin: 5
+          type: "digital_in"
+        - name: "obstacle_sensor_rear"
+          pin: 6
+          type: "digital_in"
+        - name: "bumper_sensor"
+          pin: 7
+          type: "digital_in"
+      digital_outputs:
+        - name: "safety_relay"
+          pin: 0
+          type: "digital_out"
+        - name: "warning_light"
+          pin: 1
+          type: "digital_out"
+        - name: "horn"
+          pin: 2
+          type: "digital_out"
+        - name: "lift_motor_up"
+          pin: 3
+          type: "digital_out"
+        - name: "lift_motor_down"
+          pin: 4
+          type: "digital_out"
+        - name: "charge_relay"
+          pin: 5
+          type: "digital_out"
+        - name: "brake_release"
+          pin: 6
+          type: "digital_out"
+        - name: "indicator_left"
+          pin: 7
+          type: "digital_out"
+      analog_inputs:
+        - name: "battery_voltage"
+          pin: 0
+          type: "analog_in"
+        - name: "battery_current"
+          pin: 1
+          type: "analog_in"
+        - name: "motor_current_left"
+          pin: 2
+          type: "analog_in"
+        - name: "motor_current_right"
+          pin: 3
+          type: "analog_in"
+      analog_outputs:
+        - name: "motor_speed_left"
+          pin: 0
+          type: "analog_out"
+        - name: "motor_speed_right"
+          pin: 1
+          type: "analog_out"
+        - name: "steering_angle"
+          pin: 2
+          type: "analog_out"
+        - name: "light_intensity"
+          pin: 3
+          type: "analog_out"

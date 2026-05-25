@@ -1,0 +1,5 @@
+string address
+string profile
+---
+bool success
+string message

@@ -1,0 +1,70 @@
+version: "3.8"
+
+services:
+  agv_core:
+    build: .
+    image: agv_ros2:latest
+    container_name: agv_core
+    command: >
+      /bin/bash -c "source /agv_ros2_ws/install/setup.bash &&
+      ros2 launch agv_navigation navigation.launch.py &
+      ros2 launch agv_io_controller io_controller.launch.py &
+      ros2 launch agv_plc_bridge plc_bridge.launch.py &
+      wait"
+    privileged: true
+    network_mode: host
+    volumes:
+      - /dev:/dev
+      - /sys/class/gpio:/sys/class/gpio
+      - /var/run/dbus:/var/run/dbus
+    environment:
+      - ROS_DOMAIN_ID=30
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+    restart: unless-stopped
+
+  agv_vision:
+    build: .
+    image: agv_ros2:latest
+    container_name: agv_vision
+    command: >
+      /bin/bash -c "source /agv_ros2_ws/install/setup.bash &&
+      ros2 launch agv_vision vision.launch.py"
+    runtime: nvidia
+    environment:
+      - ROS_DOMAIN_ID=30
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    volumes:
+      - agv_models:/agv_ros2_ws/models
+      - agv_data:/agv_ros2_ws/datasets
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  agv_web:
+    build: .
+    image: agv_ros2:latest
+    container_name: agv_web
+    command: >
+      /bin/bash -c "source /agv_ros2_ws/install/setup.bash &&
+      ros2 launch agv_web_server web_server.launch.py"
+    ports:
+      - "8080:8080"
+    environment:
+      - ROS_DOMAIN_ID=30
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+    restart: unless-stopped
+
+networks:
+  agv_net:
+    driver: bridge
+
+volumes:
+  agv_models:
+  agv_data:

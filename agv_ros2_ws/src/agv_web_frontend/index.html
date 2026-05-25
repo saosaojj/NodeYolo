@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AGV Control Center</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <div class="sidebar-header">
+      <svg width="32" height="32" viewBox="0 0 32 32" fill="none"><rect x="4" y="8" width="24" height="16" rx="3" stroke="var(--accent)" stroke-width="2"/><circle cx="10" cy="24" r="3" stroke="var(--accent)" stroke-width="2"/><circle cx="22" cy="24" r="3" stroke="var(--accent)" stroke-width="2"/><line x1="10" y1="14" x2="22" y2="14" stroke="var(--accent)" stroke-width="2"/></svg>
+      <span class="sidebar-title">AGV</span>
+    </div>
+    <nav class="sidebar-nav">
+      <a href="#" class="nav-item active" data-page="dashboard">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><rect x="1" y="1" width="8" height="8" rx="1.5"/><rect x="11" y="1" width="8" height="8" rx="1.5"/><rect x="1" y="11" width="8" height="8" rx="1.5"/><rect x="11" y="11" width="8" height="8" rx="1.5"/></svg>
+        <span>Dashboard</span>
+      </a>
+      <a href="#" class="nav-item" data-page="navigation">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M10 2 L10 10 L16 10" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="10" cy="10" r="2" fill="currentColor"/></svg>
+        <span>Navigation</span>
+      </a>
+      <a href="#" class="nav-item" data-page="plc">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><rect x="2" y="4" width="16" height="12" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/><line x1="6" y1="7" x2="6" y2="13" stroke="currentColor" stroke-width="1.5"/><line x1="10" y1="7" x2="10" y2="13" stroke="currentColor" stroke-width="1.5"/><line x1="14" y1="7" x2="14" y2="13" stroke="currentColor" stroke-width="1.5"/></svg>
+        <span>PLC Control</span>
+      </a>
+      <a href="#" class="nav-item" data-page="io">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><path d="M3 10 L7 10 M13 10 L17 10" stroke="currentColor" stroke-width="2"/><circle cx="10" cy="10" r="4" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M8 10 L12 10" stroke="currentColor" stroke-width="1.5"/></svg>
+        <span>IO Control</span>
+      </a>
+      <a href="#" class="nav-item" data-page="vision">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><rect x="2" y="4" width="16" height="12" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="10" cy="10" r="3" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="10" cy="10" r="1" fill="currentColor"/></svg>
+        <span>Vision</span>
+      </a>
+      <a href="#" class="nav-item" data-page="connectivity">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><path d="M2 14 Q10 6 18 14" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M5 12 Q10 8 15 12" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M8 10 Q10 9 12 10" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="10" cy="13" r="1.5" fill="currentColor"/></svg>
+        <span>Connectivity</span>
+      </a>
+      <a href="#" class="nav-item" data-page="settings">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><circle cx="10" cy="10" r="3" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M10 1 L10 3 M10 17 L10 19 M1 10 L3 10 M17 10 L19 10 M3.5 3.5 L5 5 M15 15 L16.5 16.5 M16.5 3.5 L15 5 M5 15 L3.5 16.5" stroke="currentColor" stroke-width="1.5"/></svg>
+        <span>Settings</span>
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="connection-status" id="sidebarConnStatus">
+        <span class="status-dot disconnected"></span>
+        <span>Offline</span>
+      </div>
+    </div>
+  </aside>
+
+  <div id="main-wrapper">
+    <header id="topbar">
+      <div class="topbar-left">
+        <button id="sidebarToggle" class="btn-icon">&#9776;</button>
+        <h1 class="topbar-title">AGV Control Center</h1>
+        <span class="topbar-agv-name" id="agvNameDisplay">AGV-001</span>
+      </div>
+      <div class="topbar-right">
+        <div class="conn-indicator" id="topbarConnStatus">
+          <span class="status-dot disconnected" id="connDot"></span>
+          <span id="connText">Disconnected</span>
+        </div>
+        <button id="emergencyStopBtn" class="btn-emergency" onclick="emergencyStop()">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor"><polygon points="9,1 17,16 1,16" stroke="#fff" stroke-width="1.5" fill="none"/><line x1="9" y1="6" x2="9" y2="11" stroke="#fff" stroke-width="2"/><circle cx="9" cy="13.5" r="1" fill="#fff"/></svg>
+          E-STOP
+        </button>
+      </div>
+    </header>
+
+    <main id="content">
+      <section id="page-dashboard" class="page active">
+        <div class="page-header">
+          <h2>Dashboard</h2>
+          <span class="timestamp" id="dashTimestamp">--:--:--</span>
+        </div>
+        <div class="card-grid cols-4">
+          <div class="card status-card">
+            <div class="card-label">Mode</div>
+            <div class="card-value mono" id="dashMode">--</div>
+          </div>
+          <div class="card status-card">
+            <div class="card-label">Battery</div>
+            <div class="card-value mono" id="dashBattery">--%</div>
+            <div class="battery-bar"><div class="battery-fill" id="dashBatteryFill" style="width:0%"></div></div>
+          </div>
+          <div class="card status-card">
+            <div class="card-label">Speed</div>
+            <div class="card-value mono" id="dashSpeed">-- m/s</div>
+          </div>
+          <div class="card status-card">
+            <div class="card-label">Status</div>
+            <div class="card-value mono" id="dashStatus">--</div>
+          </div>
+        </div>
+        <div class="card-grid cols-3">
+          <div class="card">
+            <div class="card-header">Position</div>
+            <div class="position-display">
+              <div class="pos-item"><span class="pos-label">X</span><span class="pos-value mono" id="dashPosX">--</span></div>
+              <div class="pos-item"><span class="pos-label">Y</span><span class="pos-value mono" id="dashPosY">--</span></div>
+              <div class="pos-item"><span class="pos-label">&theta;</span><span class="pos-value mono" id="dashPosTheta">--</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">Velocity</div>
+            <div class="velocity-display">
+              <div class="vel-item"><span class="vel-label">Linear X</span><span class="vel-value mono" id="dashVelLinear">-- m/s</span></div>
+              <div class="vel-item"><span class="vel-label">Angular Z</span><span class="vel-value mono" id="dashVelAngular">-- rad/s</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">System</div>
+            <div class="system-display">
+              <div class="sys-item"><span class="sys-label">Uptime</span><span class="sys-value mono" id="dashUptime">--</span></div>
+              <div class="sys-item"><span class="sys-label">CPU</span><span class="sys-value mono" id="dashCpu">--%</span></div>
+              <div class="sys-item"><span class="sys-label">Memory</span><span class="sys-value mono" id="dashMemory">--%</span></div>
+              <div class="sys-item"><span class="sys-label">Temp</span><span class="sys-value mono" id="dashTemp">--&deg;C</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="card-grid cols-2">
+          <div class="card">
+            <div class="card-header">Manual Control</div>
+            <div class="joystick-area">
+              <div class="dpad">
+                <button class="dpad-btn up" onclick="sendCmdVel(0.5, 0)">&#9650;</button>
+                <button class="dpad-btn left" onclick="sendCmdVel(0, 0.5)">&#9664;</button>
+                <button class="dpad-btn center" onclick="sendCmdVel(0, 0)">&#9632;</button>
+                <button class="dpad-btn right" onclick="sendCmdVel(0, -0.5)">&#9654;</button>
+                <button class="dpad-btn down" onclick="sendCmdVel(-0.5, 0)">&#9660;</button>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">Event Log</div>
+            <div class="log-list" id="dashLog"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-navigation" class="page">
+        <div class="page-header">
+          <h2>Navigation</h2>
+        </div>
+        <div class="nav-layout">
+          <div class="card map-card">
+            <div class="card-header">Map View <span class="card-hint">(Click to set waypoint)</span></div>
+            <canvas id="mapCanvas" width="800" height="600"></canvas>
+          </div>
+          <div class="nav-sidebar">
+            <div class="card">
+              <div class="card-header">Navigate To</div>
+              <div class="form-group">
+                <label>X</label>
+                <input type="number" id="navTargetX" class="input-field" step="0.1" value="0">
+              </div>
+              <div class="form-group">
+                <label>Y</label>
+                <input type="number" id="navTargetY" class="input-field" step="0.1" value="0">
+              </div>
+              <div class="form-group">
+                <label>&theta;</label>
+                <input type="number" id="navTargetTheta" class="input-field" step="0.1" value="0">
+              </div>
+              <button class="btn btn-primary btn-block" onclick="navigateTo()">Navigate</button>
+            </div>
+            <div class="card">
+              <div class="card-header">Patrol</div>
+              <div class="form-group">
+                <label>Loops</label>
+                <input type="number" id="patrolLoops" class="input-field" min="1" value="1">
+              </div>
+              <div class="waypoint-list" id="waypointList"></div>
+              <div class="btn-group">
+                <button class="btn btn-primary" onclick="startPatrol()">Start Patrol</button>
+                <button class="btn btn-secondary" onclick="clearWaypoints()">Clear</button>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-header">Velocity Control</div>
+              <div class="form-group">
+                <label>Linear X (m/s)</label>
+                <input type="range" id="velLinearX" min="-1" max="1" step="0.05" value="0">
+                <span class="range-value mono" id="velLinearXVal">0.00</span>
+              </div>
+              <div class="form-group">
+                <label>Angular Z (rad/s)</label>
+                <input type="range" id="velAngularZ" min="-1.5" max="1.5" step="0.05" value="0">
+                <span class="range-value mono" id="velAngularZVal">0.00</span>
+              </div>
+              <button class="btn btn-primary btn-block" onclick="sendCmdVelFromSliders()">Send Velocity</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-plc" class="page">
+        <div class="page-header">
+          <h2>PLC Control</h2>
+        </div>
+        <div class="card-grid cols-3">
+          <div class="card">
+            <div class="card-header">PLC Connection</div>
+            <div class="plc-conn-info">
+              <div class="sys-item"><span class="sys-label">Status</span><span class="sys-value" id="plcConnStatus">--</span></div>
+              <div class="sys-item"><span class="sys-label">Device</span><span class="sys-value mono" id="plcDevice">--</span></div>
+              <div class="sys-item"><span class="sys-label">IP</span><span class="sys-value mono" id="plcIP">--</span></div>
+              <div class="sys-item"><span class="sys-label">Port</span><span class="sys-value mono" id="plcPort">--</span></div>
+            </div>
+            <button class="btn btn-primary btn-block" onclick="refreshPlcStatus()">Refresh</button>
+          </div>
+          <div class="card">
+            <div class="card-header">Read Coils/Registers</div>
+            <div class="form-group">
+              <label>Device</label>
+              <select id="plcReadDevice" class="input-field">
+                <option value="plc1">PLC-1</option>
+                <option value="plc2">PLC-2</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Type</label>
+              <select id="plcReadType" class="input-field">
+                <option value="coils">Coils</option>
+                <option value="holding_registers">Holding Registers</option>
+                <option value="input_registers">Input Registers</option>
+                <option value="discrete_inputs">Discrete Inputs</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Address</label>
+              <input type="number" id="plcReadAddr" class="input-field" min="0" value="0">
+            </div>
+            <div class="form-group">
+              <label>Quantity</label>
+              <input type="number" id="plcReadQty" class="input-field" min="1" max="125" value="10">
+            </div>
+            <button class="btn btn-primary btn-block" onclick="readPlc()">Read</button>
+          </div>
+          <div class="card">
+            <div class="card-header">Write Coils/Registers</div>
+            <div class="form-group">
+              <label>Device</label>
+              <select id="plcWriteDevice" class="input-field">
+                <option value="plc1">PLC-1</option>
+                <option value="plc2">PLC-2</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Type</label>
+              <select id="plcWriteType" class="input-field">
+                <option value="coils">Coils</option>
+                <option value="holding_registers">Holding Registers</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Address</label>
+              <input type="number" id="plcWriteAddr" class="input-field" min="0" value="0">
+            </div>
+            <div class="form-group">
+              <label>Values (comma separated)</label>
+              <input type="text" id="plcWriteValues" class="input-field" placeholder="1,0,1,0">
+            </div>
+            <button class="btn btn-warning btn-block" onclick="writePlc()">Write</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">PLC Data</div>
+          <div class="table-wrapper">
+            <table class="data-table" id="plcDataTable">
+              <thead>
+                <tr><th>Address</th><th>Type</th><th>Value</th><th>Timestamp</th></tr>
+              </thead>
+              <tbody id="plcDataBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-io" class="page">
+        <div class="page-header">
+          <h2>IO Control</h2>
+        </div>
+        <div class="card-grid cols-2">
+          <div class="card">
+            <div class="card-header">Digital IO</div>
+            <div class="io-list" id="digitalIoList"></div>
+          </div>
+          <div class="card">
+            <div class="card-header">Analog IO</div>
+            <div class="io-list" id="analogIoList"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-vision" class="page">
+        <div class="page-header">
+          <h2>Vision</h2>
+        </div>
+        <div class="card-grid cols-2">
+          <div class="card">
+            <div class="card-header">Camera Feed</div>
+            <div class="camera-feed" id="cameraFeed">
+              <img id="cameraImg" alt="Camera Feed">
+              <div class="camera-overlay" id="cameraOverlay"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">YOLO Detection Results</div>
+            <div class="detection-list" id="detectionList">
+              <div class="empty-state">No detections</div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">Model Training</div>
+          <div class="training-layout">
+            <div class="form-group">
+              <label>Model</label>
+              <select id="trainModel" class="input-field">
+                <option value="yolov8n">YOLOv8n</option>
+                <option value="yolov8s">YOLOv8s</option>
+                <option value="yolov8m">YOLOv8m</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Epochs</label>
+              <input type="number" id="trainEpochs" class="input-field" min="1" value="50">
+            </div>
+            <div class="form-group">
+              <label>Batch Size</label>
+              <input type="number" id="trainBatch" class="input-field" min="1" value="16">
+            </div>
+            <div class="form-group">
+              <label>Image Size</label>
+              <input type="number" id="trainImgSize" class="input-field" value="640">
+            </div>
+            <div class="form-group">
+              <label>Dataset</label>
+              <input type="text" id="trainDataset" class="input-field" value="/data/dataset">
+            </div>
+            <button class="btn btn-primary" onclick="startTraining()">Start Training</button>
+          </div>
+          <div class="training-progress" id="trainingProgress" style="display:none">
+            <div class="progress-bar"><div class="progress-fill" id="trainProgressFill" style="width:0%"></div></div>
+            <div class="progress-info mono" id="trainProgressInfo">0%</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-connectivity" class="page">
+        <div class="page-header">
+          <h2>Connectivity</h2>
+        </div>
+        <div class="card-grid cols-2">
+          <div class="card">
+            <div class="card-header">WiFi</div>
+            <div class="wifi-status">
+              <div class="sys-item"><span class="sys-label">Status</span><span class="sys-value" id="wifiStatus">--</span></div>
+              <div class="sys-item"><span class="sys-label">SSID</span><span class="sys-value mono" id="wifiSSID">--</span></div>
+              <div class="sys-item"><span class="sys-label">IP</span><span class="sys-value mono" id="wifiIP">--</span></div>
+              <div class="sys-item"><span class="sys-label">Signal</span><span class="sys-value mono" id="wifiSignal">--</span></div>
+            </div>
+            <button class="btn btn-primary btn-block" onclick="scanWiFi()">Scan Networks</button>
+            <div class="wifi-list" id="wifiList"></div>
+            <div class="wifi-connect-form" id="wifiConnectForm" style="display:none">
+              <div class="form-group">
+                <label>SSID</label>
+                <input type="text" id="wifiConnectSSID" class="input-field" readonly>
+              </div>
+              <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="wifiConnectPass" class="input-field">
+              </div>
+              <button class="btn btn-primary btn-block" onclick="connectWiFiFromForm()">Connect</button>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">Bluetooth</div>
+            <div class="bt-status">
+              <div class="sys-item"><span class="sys-label">Status</span><span class="sys-value" id="btStatus">--</span></div>
+              <div class="sys-item"><span class="sys-label">Connected</span><span class="sys-value mono" id="btConnected">--</span></div>
+            </div>
+            <button class="btn btn-primary btn-block" onclick="scanBluetooth()">Scan Devices</button>
+            <div class="bt-list" id="btList"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-settings" class="page">
+        <div class="page-header">
+          <h2>Settings</h2>
+        </div>
+        <div class="card-grid cols-2">
+          <div class="card">
+            <div class="card-header">System Configuration</div>
+            <div class="form-group">
+              <label>AGV Name</label>
+              <input type="text" id="settingAgvName" class="input-field" value="AGV-001">
+            </div>
+            <div class="form-group">
+              <label>Max Speed (m/s)</label>
+              <input type="number" id="settingMaxSpeed" class="input-field" step="0.1" value="1.0">
+            </div>
+            <div class="form-group">
+              <label>Safety Distance (m)</label>
+              <input type="number" id="settingSafetyDist" class="input-field" step="0.05" value="0.3">
+            </div>
+            <div class="form-group">
+              <label>Map Frame</label>
+              <input type="text" id="settingMapFrame" class="input-field" value="map">
+            </div>
+            <div class="form-group">
+              <label>Robot Frame</label>
+              <input type="text" id="settingRobotFrame" class="input-field" value="base_link">
+            </div>
+            <button class="btn btn-primary btn-block" onclick="saveSettings()">Save Settings</button>
+          </div>
+          <div class="card">
+            <div class="card-header">ROS2 Node Management</div>
+            <div class="node-list" id="ros2NodeList"></div>
+            <div class="form-group" style="margin-top:12px">
+              <label>Launch Package</label>
+              <input type="text" id="ros2LaunchPkg" class="input-field" placeholder="package_name">
+            </div>
+            <div class="form-group">
+              <label>Launch File</label>
+              <input type="text" id="ros2LaunchFile" class="input-field" placeholder="launch_file.py">
+            </div>
+            <div class="btn-group">
+              <button class="btn btn-primary" onclick="launchRos2Node()">Launch</button>
+              <button class="btn btn-secondary" onclick="refreshRos2Nodes()">Refresh</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<div id="toastContainer"></div>
+<div id="modal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header"><span id="modalTitle">Confirm</span><button class="modal-close" onclick="closeModal()">&times;</button></div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="modalConfirmBtn">Confirm</button></div>
+  </div>
+</div>
+<div id="loadingOverlay" class="loading-overlay" style="display:none">
+  <div class="spinner"></div>
+</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -17,6 +17,9 @@
   <depend>agv_io_controller</depend>
   <depend>agv_connectivity</depend>
   <depend>agv_web_server</depend>
+  <depend>agv_power_manager</depend>
+  <depend>agv_path_planner</depend>
+  <depend>agv_video_stream</depend>
 
   <export>
     <build_type>ament_cmake</build_type>

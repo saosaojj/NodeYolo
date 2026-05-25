@@ -1,5 +1,8 @@
+import threading
+
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from std_msgs.msg import BoolMultiArray, Int32MultiArray
 from agv_interfaces.msg import PlcData
 from agv_interfaces.srv import ReadPlc, WritePlc
@@ -19,6 +22,8 @@ class ModbusTcpNode(Node):
         self.declare_parameter('coil_read_count', 16)
         self.declare_parameter('register_read_start', 0)
         self.declare_parameter('register_read_count', 16)
+        self.declare_parameter('max_retry_interval', 30.0)
+        self.declare_parameter('watchdog_timeout', 5.0)
 
         self.plc_ip = self.get_parameter('plc_ip').value
         self.plc_port = self.get_parameter('plc_port').value
@@ -28,25 +33,47 @@ class ModbusTcpNode(Node):
         self.coil_read_count = self.get_parameter('coil_read_count').value
         self.register_read_start = self.get_parameter('register_read_start').value
         self.register_read_count = self.get_parameter('register_read_count').value
+        self._max_retry_interval = self.get_parameter('max_retry_interval').value
+        self._watchdog_timeout = self.get_parameter('watchdog_timeout').value
 
         self.client = ModbusTcpClient(
             host=self.plc_ip,
             port=self.plc_port,
         )
 
-        self.plc_data_pub = self.create_publisher(PlcData, 'plc_data', 10)
-        self.coil_states_pub = self.create_publisher(BoolMultiArray, 'coil_states', 10)
-        self.register_states_pub = self.create_publisher(Int32MultiArray, 'register_states', 10)
+        sensor_qos = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=5,
+        )
+        command_qos = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=10,
+        )
+
+        self.plc_data_pub = self.create_publisher(PlcData, 'plc_data', sensor_qos)
+        self.coil_states_pub = self.create_publisher(BoolMultiArray, 'coil_states', sensor_qos)
+        self.register_states_pub = self.create_publisher(Int32MultiArray, 'register_states', sensor_qos)
 
         self.write_coils_sub = self.create_subscription(
-            BoolMultiArray, 'write_coils', self.write_coils_callback, 10)
+            BoolMultiArray, 'write_coils', self.write_coils_callback, command_qos)
         self.write_registers_sub = self.create_subscription(
-            Int32MultiArray, 'write_registers', self.write_registers_callback, 10)
+            Int32MultiArray, 'write_registers', self.write_registers_callback, command_qos)
 
         self.read_plc_srv = self.create_service(ReadPlc, 'read_plc', self.read_plc_callback)
         self.write_plc_srv = self.create_service(WritePlc, 'write_plc', self.write_plc_callback)
 
-        self.poll_timer = self.create_timer(poll_rate / 1000.0, self.poll_plc)
+        self._poll_condition = threading.Condition()
+        self._poll_interval = poll_rate / 1000.0
+        self._poll_thread = threading.Thread(target=self._poll_loop, daemon=True)
+        self._poll_thread_active = True
+        self._poll_thread.start()
+
+        self._retry_backoff = 1.0
+        self._last_successful_poll = self.get_clock().now()
+
+        self._watchdog_timer = self.create_timer(1.0, self._watchdog_check)
 
         self.connected = False
         self.connect()
@@ -55,21 +82,57 @@ class ModbusTcpNode(Node):
         result = self.client.connect()
         self.connected = result
         if self.connected:
+            self._retry_backoff = 1.0
+            self._last_successful_poll = self.get_clock().now()
             self.get_logger().info(f'Connected to PLC at {self.plc_ip}:{self.plc_port}')
         else:
             self.get_logger().warn(f'Failed to connect to PLC at {self.plc_ip}:{self.plc_port}')
+
+    def _connect_with_retry(self):
+        result = self.client.connect()
+        self.connected = result
+        if self.connected:
+            self._retry_backoff = 1.0
+            self._last_successful_poll = self.get_clock().now()
+            self.get_logger().info(f'Reconnected to PLC at {self.plc_ip}:{self.plc_port}')
+        else:
+            self._retry_backoff = min(self._retry_backoff * 2.0, self._max_retry_interval)
+            self.get_logger().warn(
+                f'Retry connection failed, next retry in {self._retry_backoff:.1f}s')
 
     def disconnect(self):
         self.client.close()
         self.connected = False
         self.get_logger().info('Disconnected from PLC')
 
-    def poll_plc(self):
-        if not self.connected:
-            self.connect()
-            if not self.connected:
-                return
+    def _poll_loop(self):
+        while self._poll_thread_active:
+            with self._poll_condition:
+                self._poll_condition.wait(timeout=self._poll_interval)
 
+            if not self._poll_thread_active:
+                break
+
+            if not self.connected:
+                with self._poll_condition:
+                    self._poll_condition.wait(timeout=self._retry_backoff)
+                self._connect_with_retry()
+                if not self.connected:
+                    continue
+
+            self.poll_plc()
+
+    def _watchdog_check(self):
+        if not self.connected:
+            return
+        elapsed = (self.get_clock().now() - self._last_successful_poll).nanoseconds / 1e9
+        if elapsed > self._watchdog_timeout:
+            self.get_logger().warn(
+                f'Watchdog: no successful poll for {elapsed:.1f}s, resetting connection')
+            self.disconnect()
+            self._connect_with_retry()
+
+    def poll_plc(self):
         plc_data = PlcData()
         plc_data.device_name = 'plc'
         plc_data.ip_address = self.plc_ip
@@ -92,6 +155,8 @@ class ModbusTcpNode(Node):
         else:
             self.get_logger().warn(f'Failed to read coils: {coil_result}')
             plc_data.coil_values = []
+            self.connected = False
+            return
 
         register_result = self.client.read_holding_registers(
             address=self.register_read_start,
@@ -109,7 +174,10 @@ class ModbusTcpNode(Node):
         else:
             self.get_logger().warn(f'Failed to read registers: {register_result}')
             plc_data.register_values = []
+            self.connected = False
+            return
 
+        self._last_successful_poll = self.get_clock().now()
         self.plc_data_pub.publish(plc_data)
 
     def write_coils_callback(self, msg):
@@ -125,6 +193,7 @@ class ModbusTcpNode(Node):
 
         if result.isError():
             self.get_logger().warn(f'Failed to write coils: {result}')
+            self.connected = False
         else:
             self.get_logger().info(f'Successfully wrote {len(msg.data)} coils')
 
@@ -141,6 +210,7 @@ class ModbusTcpNode(Node):
 
         if result.isError():
             self.get_logger().warn(f'Failed to write registers: {result}')
+            self.connected = False
         else:
             self.get_logger().info(f'Successfully wrote {len(msg.data)} registers')
 
@@ -171,6 +241,7 @@ class ModbusTcpNode(Node):
             response.success = False
             response.message = f'Read failed: {result}'
             response.values = []
+            self.connected = False
 
         return response
 
@@ -192,10 +263,15 @@ class ModbusTcpNode(Node):
         else:
             response.success = False
             response.message = f'Write failed: {result}'
+            self.connected = False
 
         return response
 
     def destroy(self):
+        self._poll_thread_active = False
+        with self._poll_condition:
+            self._poll_condition.notify_all()
+        self._poll_thread.join(timeout=2.0)
         self.disconnect()
         super().destroy_node()
 

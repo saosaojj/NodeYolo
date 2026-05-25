@@ -28,6 +28,11 @@ def generate_launch_description():
         default_value='8080',
         description='Web server port')
 
+    auto_charge_arg = DeclareLaunchArgument(
+        'auto_charge',
+        default_value='True',
+        description='Enable automatic charging')
+
     navigation_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(
@@ -85,15 +90,48 @@ def generate_launch_description():
             'port': LaunchConfiguration('web_port'),
         }.items())
 
+    power_manager_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(
+                get_package_share_directory('agv_power_manager'),
+                'launch',
+                'power_manager.launch.py')),
+        launch_arguments={
+            'simulate': LaunchConfiguration('simulation'),
+            'auto_charge': LaunchConfiguration('auto_charge'),
+        }.items())
+
+    path_planner_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(
+                get_package_share_directory('agv_path_planner'),
+                'launch',
+                'path_planner.launch.py')))
+
+    video_stream_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(
+                get_package_share_directory('agv_video_stream'),
+                'launch',
+                'video_stream.launch.py')),
+        launch_arguments={
+            'use_recording': 'True',
+            'use_server': 'True',
+        }.items())
+
     return LaunchDescription([
         simulation_arg,
         use_camera_arg,
         namespace_arg,
         web_port_arg,
+        auto_charge_arg,
         navigation_launch,
         io_controller_launch,
         plc_bridge_launch,
         vision_launch,
         connectivity_launch,
         web_server_launch,
+        power_manager_launch,
+        path_planner_launch,
+        video_stream_launch,
     ])

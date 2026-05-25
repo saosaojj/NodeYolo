@@ -1,0 +1,36 @@
+battery_monitor:
+  ros__parameters:
+    poll_rate: 1.0
+    battery_capacity_ah: 50.0
+    nominal_voltage: 48.0
+    min_voltage: 39.0
+    max_voltage: 54.6
+    num_cells: 13
+    simulate: true
+    alert_thresholds:
+      low_battery: 20.0
+      critical_battery: 10.0
+      over_temperature: 45.0
+      under_voltage: 40.0
+
+charging_controller:
+  ros__parameters:
+    charge_threshold_low: 20.0
+    charge_threshold_high: 90.0
+    charge_station_x: 0.0
+    charge_station_y: 0.0
+    charge_station_theta: 0.0
+    auto_charge_enabled: true
+    docking_approach_speed: 0.05
+    docking_approach_angular: 0.1
+
+power_manager:
+  ros__parameters:
+    power_save_threshold: 15.0
+    critical_threshold: 5.0
+    performance_mode: "balanced"
+    mode_thresholds:
+      performance: 80.0
+      balanced: 30.0
+      power_save: 15.0
+      critical: 5.0

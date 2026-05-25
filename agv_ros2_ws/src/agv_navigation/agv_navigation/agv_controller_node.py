@@ -19,6 +19,11 @@ class AgvControllerNode(Node):
         self.declare_parameter('kd_linear', 0.1)
         self.declare_parameter('kd_angular', 0.3)
         self.declare_parameter('control_rate', 50.0)
+        self.declare_parameter('max_acceleration', 2.0)
+        self.declare_parameter('max_jerk', 10.0)
+        self.declare_parameter('cmd_vel_timeout', 1.0)
+        self.declare_parameter('velocity_ramp_rate', 1.0)
+        self.declare_parameter('anti_windup_limit', 5.0)
 
         self.wheel_base = self.get_parameter('wheel_base').value
         self.max_linear_vel = self.get_parameter('max_linear_vel').value
@@ -28,6 +33,11 @@ class AgvControllerNode(Node):
         self.kd_linear = self.get_parameter('kd_linear').value
         self.kd_angular = self.get_parameter('kd_angular').value
         control_rate = self.get_parameter('control_rate').value
+        self._max_acceleration = self.get_parameter('max_acceleration').value
+        self._max_jerk = self.get_parameter('max_jerk').value
+        self._cmd_vel_timeout = self.get_parameter('cmd_vel_timeout').value
+        self._velocity_ramp_rate = self.get_parameter('velocity_ramp_rate').value
+        self._anti_windup_limit = self.get_parameter('anti_windup_limit').value
 
         self.current_x = 0.0
         self.current_y = 0.0
@@ -36,6 +46,12 @@ class AgvControllerNode(Node):
         self.current_angular_vel = 0.0
         self.prev_linear_error = 0.0
         self.prev_angular_error = 0.0
+        self._integral_linear_error = 0.0
+        self._integral_angular_error = 0.0
+        self._prev_desired_linear = 0.0
+        self._prev_desired_angular = 0.0
+        self._prev_prev_desired_linear = 0.0
+        self._prev_prev_desired_angular = 0.0
 
         self.target_x = None
         self.target_y = None
@@ -46,8 +62,12 @@ class AgvControllerNode(Node):
         self.emergency_stop_flag = False
         self.cmd_vel_linear = 0.0
         self.cmd_vel_angular = 0.0
+        self._smoothed_linear = 0.0
+        self._smoothed_angular = 0.0
         self.battery_level = 100.0
         self.active_alarms = []
+
+        self._last_cmd_vel_time = self.get_clock().now()
 
         self.cmd_vel_sub = self.create_subscription(
             Twist, 'cmd_vel', self.cmd_vel_callback, 10)
@@ -67,6 +87,7 @@ class AgvControllerNode(Node):
         if self.mode == 'manual' and not self.emergency_stop_flag:
             self.cmd_vel_linear = msg.linear.x
             self.cmd_vel_angular = msg.angular.z
+            self._last_cmd_vel_time = self.get_clock().now()
 
     def target_pose_callback(self, msg):
         self.target_x = msg.pose.position.x
@@ -80,6 +101,8 @@ class AgvControllerNode(Node):
             self.mode = 'auto'
         self.prev_linear_error = 0.0
         self.prev_angular_error = 0.0
+        self._integral_linear_error = 0.0
+        self._integral_angular_error = 0.0
 
     def control_callback(self, request, response):
         cmd = request.command.lower()
@@ -93,12 +116,18 @@ class AgvControllerNode(Node):
             self.has_target = False
             self.cmd_vel_linear = 0.0
             self.cmd_vel_angular = 0.0
+            self._smoothed_linear = 0.0
+            self._smoothed_angular = 0.0
+            self._integral_linear_error = 0.0
+            self._integral_angular_error = 0.0
             response.success = True
             response.message = 'AGV stopped'
         elif cmd == 'pause':
             self.mode = 'idle'
             self.cmd_vel_linear = 0.0
             self.cmd_vel_angular = 0.0
+            self._smoothed_linear = 0.0
+            self._smoothed_angular = 0.0
             response.success = True
             response.message = 'AGV paused'
         elif cmd == 'resume':
@@ -111,6 +140,8 @@ class AgvControllerNode(Node):
             self.has_target = False
             self.cmd_vel_linear = 0.0
             self.cmd_vel_angular = 0.0
+            self._smoothed_linear = 0.0
+            self._smoothed_angular = 0.0
             response.success = True
             response.message = 'AGV in charging mode'
         elif cmd == 'emergency_stop':
@@ -118,6 +149,8 @@ class AgvControllerNode(Node):
             self.mode = 'error'
             self.cmd_vel_linear = 0.0
             self.cmd_vel_angular = 0.0
+            self._smoothed_linear = 0.0
+            self._smoothed_angular = 0.0
             self.has_target = False
             if 'emergency_stop' not in self.active_alarms:
                 self.active_alarms.append('emergency_stop')
@@ -128,29 +161,88 @@ class AgvControllerNode(Node):
             response.message = f'Unknown command: {cmd}'
         return response
 
+    def _apply_velocity_smoothing(self, desired_linear, desired_angular, dt):
+        max_delta_linear = self._velocity_ramp_rate * dt
+        max_delta_angular = self._velocity_ramp_rate * dt
+
+        delta_linear = desired_linear - self._smoothed_linear
+        delta_angular = desired_angular - self._smoothed_angular
+
+        delta_linear = max(-max_delta_linear, min(max_delta_linear, delta_linear))
+        delta_angular = max(-max_delta_angular, min(max_delta_angular, delta_angular))
+
+        new_linear = self._smoothed_linear + delta_linear
+        new_angular = self._smoothed_angular + delta_angular
+
+        prev_accel_linear = self._smoothed_linear - self._prev_desired_linear
+        prev_accel_angular = self._smoothed_angular - self._prev_desired_angular
+        new_accel_linear = new_linear - self._smoothed_linear
+        new_accel_angular = new_angular - self._smoothed_angular
+
+        jerk_linear = (new_accel_linear - prev_accel_linear) / dt if dt > 0 else 0.0
+        jerk_angular = (new_accel_angular - prev_accel_angular) / dt if dt > 0 else 0.0
+
+        if abs(jerk_linear) > self._max_jerk:
+            sign = 1.0 if jerk_linear > 0 else -1.0
+            new_accel_linear = prev_accel_linear + sign * self._max_jerk * dt
+            new_linear = self._smoothed_linear + new_accel_linear
+
+        if abs(jerk_angular) > self._max_jerk:
+            sign = 1.0 if jerk_angular > 0 else -1.0
+            new_accel_angular = prev_accel_angular + sign * self._max_jerk * dt
+            new_angular = self._smoothed_angular + new_accel_angular
+
+        accel_linear = (new_linear - self._smoothed_linear) / dt if dt > 0 else 0.0
+        accel_angular = (new_angular - self._smoothed_angular) / dt if dt > 0 else 0.0
+
+        if abs(accel_linear) > self._max_acceleration:
+            sign = 1.0 if accel_linear > 0 else -1.0
+            new_linear = self._smoothed_linear + sign * self._max_acceleration * dt
+        if abs(accel_angular) > self._max_acceleration:
+            sign = 1.0 if accel_angular > 0 else -1.0
+            new_angular = self._smoothed_angular + sign * self._max_acceleration * dt
+
+        self._prev_prev_desired_linear = self._prev_desired_linear
+        self._prev_prev_desired_angular = self._prev_desired_angular
+        self._prev_desired_linear = self._smoothed_linear
+        self._prev_desired_angular = self._smoothed_angular
+        self._smoothed_linear = new_linear
+        self._smoothed_angular = new_angular
+
+        return new_linear, new_angular
+
     def control_loop(self):
+        dt = 1.0 / self.get_parameter('control_rate').value
+
         if self.emergency_stop_flag:
             self.cmd_vel_linear = 0.0
             self.cmd_vel_angular = 0.0
+            self._smoothed_linear = 0.0
+            self._smoothed_angular = 0.0
         elif self.mode == 'auto' and self.has_target:
             self._compute_pd_control()
         elif self.mode == 'manual':
-            pass
+            elapsed = (self.get_clock().now() - self._last_cmd_vel_time).nanoseconds / 1e9
+            if elapsed > self._cmd_vel_timeout:
+                self.cmd_vel_linear = 0.0
+                self.cmd_vel_angular = 0.0
         else:
             self.cmd_vel_linear = 0.0
             self.cmd_vel_angular = 0.0
 
+        smoothed_linear, smoothed_angular = self._apply_velocity_smoothing(
+            self.cmd_vel_linear, self.cmd_vel_angular, dt)
+
         cmd_out = Twist()
         cmd_out.linear.x = max(-self.max_linear_vel,
-                               min(self.max_linear_vel, self.cmd_vel_linear))
+                               min(self.max_linear_vel, smoothed_linear))
         cmd_out.angular.z = max(-self.max_angular_vel,
-                                min(self.max_angular_vel, self.cmd_vel_angular))
+                                min(self.max_angular_vel, smoothed_angular))
         self.cmd_vel_out_pub.publish(cmd_out)
 
         self.current_linear_vel = cmd_out.linear.x
         self.current_angular_vel = cmd_out.angular.z
 
-        dt = 1.0 / self.get_parameter('control_rate').value
         self.current_theta += self.current_angular_vel * dt
         self.current_theta = math.atan2(math.sin(self.current_theta),
                                         math.cos(self.current_theta))
@@ -185,6 +277,14 @@ class AgvControllerNode(Node):
         d_linear = (linear_error - self.prev_linear_error)
         d_angular = (angular_error - self.prev_angular_error)
 
+        self._integral_linear_error += linear_error
+        self._integral_angular_error += angular_error
+
+        self._integral_linear_error = max(-self._anti_windup_limit,
+                                          min(self._anti_windup_limit, self._integral_linear_error))
+        self._integral_angular_error = max(-self._anti_windup_limit,
+                                           min(self._anti_windup_limit, self._integral_angular_error))
+
         self.prev_linear_error = linear_error
         self.prev_angular_error = angular_error
 
@@ -206,6 +306,8 @@ class AgvControllerNode(Node):
                 self.mode = 'idle'
                 self.cmd_vel_linear = 0.0
                 self.cmd_vel_angular = 0.0
+                self._integral_linear_error = 0.0
+                self._integral_angular_error = 0.0
 
 
 def main(args=None):

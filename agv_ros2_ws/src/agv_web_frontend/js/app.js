@@ -854,6 +854,113 @@ function startPolling() {
   }, 1000));
 }
 
+function initPowerManagement() {
+  appState.batteryState = {
+    voltage: 0, current: 0, charge_level: 0, temperature: 0,
+    health_percent: 0, charging_state: 'unknown', charge_rate: 0,
+    discharge_rate: 0, estimated_time_remaining: 0, charge_cycles: 0,
+    battery_type: '--'
+  };
+  appState.powerMode = 'balanced';
+  appState.powerHistory = [];
+
+  function updatePowerPage(data) {
+    if (!data) return;
+    var el = function(id) { return document.getElementById(id); };
+    if (el('powerChargeLevel')) el('powerChargeLevel').textContent = (data.charge_level || 0).toFixed(1);
+    if (el('powerVoltage')) el('powerVoltage').textContent = (data.voltage || 0).toFixed(1);
+    if (el('powerCurrent')) el('powerCurrent').textContent = (data.current || 0).toFixed(2);
+    if (el('powerTimeRemaining')) el('powerTimeRemaining').textContent = ((data.estimated_time_remaining || 0) / 60).toFixed(0);
+    if (el('powerChargingState')) el('powerChargingState').textContent = data.charging_state || '--';
+    if (el('powerTemperature')) el('powerTemperature').textContent = (data.temperature || 0).toFixed(1) + ' °C';
+    if (el('powerHealth')) el('powerHealth').textContent = (data.health_percent || 0).toFixed(0) + ' %';
+    if (el('powerChargeCycles')) el('powerChargeCycles').textContent = data.charge_cycles || 0;
+    if (el('powerBatteryType')) el('powerBatteryType').textContent = data.battery_type || '--';
+    if (el('powerChargeRate')) el('powerChargeRate').textContent = (data.charge_rate || 0).toFixed(2) + ' A';
+    if (el('powerDischargeRate')) el('powerDischargeRate').textContent = (data.discharge_rate || 0).toFixed(2) + ' A';
+    if (el('powerBatteryFill')) {
+      var pct = Math.max(0, Math.min(100, data.charge_level || 0));
+      el('powerBatteryFill').style.width = pct + '%';
+      el('powerBatteryFill').className = 'battery-fill' + (pct < 20 ? ' low' : pct < 50 ? ' medium' : '');
+    }
+    if (el('powerMode')) el('powerMode').textContent = appState.powerMode || '--';
+    if (el('powerAutoCharge')) el('powerAutoCharge').textContent = '启用';
+    appState.powerHistory.push({ time: Date.now(), level: data.charge_level || 0, voltage: data.voltage || 0 });
+    if (appState.powerHistory.length > 120) appState.powerHistory.shift();
+    drawPowerChart();
+  }
+
+  function drawPowerChart() {
+    var canvas = document.getElementById('powerChartCanvas');
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+    var w = canvas.width = canvas.offsetWidth;
+    var h = canvas.height = canvas.offsetHeight;
+    ctx.clearRect(0, 0, w, h);
+    var hist = appState.powerHistory;
+    if (hist.length < 2) return;
+    var maxLevel = 100;
+    ctx.strokeStyle = '#00d4aa';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (var i = 0; i < hist.length; i++) {
+      var x = (i / (hist.length - 1)) * w;
+      var y = h - (hist[i].level / maxLevel) * h;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.lineTo(w, h);
+    ctx.lineTo(0, h);
+    ctx.closePath();
+    var grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, 'rgba(0, 212, 170, 0.3)');
+    grad.addColorStop(1, 'rgba(0, 212, 170, 0.0)');
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.strokeStyle = '#00a8cc';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (var i = 0; i < hist.length; i++) {
+      var x = (i / (hist.length - 1)) * w;
+      var y = h - ((hist[i].voltage - 39) / (54.6 - 39)) * h;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  function setPowerMode(mode) {
+    apiPost('/api/v1/power/mode', { model_path: mode }).then(function() {
+      appState.powerMode = mode;
+      showToast('电源模式已切换: ' + mode, 'success');
+    }).catch(function() {});
+  }
+
+  function setCharging(command) {
+    apiPost('/api/v1/power/charging', { command: command }).then(function(res) {
+      showToast('充电命令: ' + command + (res.success ? ' 成功' : ' 失败'), res.success ? 'success' : 'error');
+    }).catch(function() {});
+  }
+
+  document.getElementById('setModePerformance').addEventListener('click', function() { setPowerMode('performance'); });
+  document.getElementById('setModeBalanced').addEventListener('click', function() { setPowerMode('balanced'); });
+  document.getElementById('setModePowerSave').addEventListener('click', function() { setPowerMode('power_save'); });
+  document.getElementById('startCharging').addEventListener('click', function() { setCharging('start_charging'); });
+  document.getElementById('stopCharging').addEventListener('click', function() { setCharging('stop_charging'); });
+  document.getElementById('dockToCharger').addEventListener('click', function() { setCharging('force_dock'); });
+  document.getElementById('refreshPower').addEventListener('click', function() {
+    apiGet('/api/v1/power/status').then(function(data) { updatePowerPage(data); }).catch(function() {});
+  });
+
+  pollIntervals.push(setInterval(function() {
+    apiGet('/api/v1/power/status').then(function(data) {
+      if (data) {
+        appState.batteryState = data;
+        updatePowerPage(data);
+      }
+    }).catch(function() {});
+  }, 3000));
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   initNavigation();
   initSliders();
@@ -861,6 +968,7 @@ document.addEventListener('DOMContentLoaded', function() {
   renderIOList();
   renderWaypoints();
   renderRos2Nodes([]);
+  initPowerManagement();
 
   addLog('System initialized', 'info');
 

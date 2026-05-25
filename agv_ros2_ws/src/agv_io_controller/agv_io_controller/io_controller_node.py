@@ -1,4 +1,6 @@
+import time
 import yaml
+from collections import deque
 
 import rclpy
 from rclpy.node import Node
@@ -15,12 +17,24 @@ class IOControllerNode(Node):
         self.declare_parameter('poll_rate', 100)
         self.declare_parameter('io_config_file', '')
         self.declare_parameter('simulate', True)
+        self.declare_parameter('debounce_samples', 3)
+        self.declare_parameter('analog_filter_alpha', 0.2)
+        self.declare_parameter('watchdog_timeout', 5.0)
 
         self.io_points = {}
         self.gpio_chip = None
         self.gpio_lines = {}
 
         self.simulate = self.get_parameter('simulate').value
+        self._debounce_samples = self.get_parameter('debounce_samples').value
+        self._analog_filter_alpha = self.get_parameter('analog_filter_alpha').value
+        self._watchdog_timeout = self.get_parameter('watchdog_timeout').value
+
+        self._debounce_buffers = {}
+        self._analog_filtered = {}
+        self._change_callbacks = {}
+        self._watchdog_timers = {}
+        self._watchdog_last_update = {}
 
         config_file = self.get_parameter('io_config_file').value
         if config_file:
@@ -48,6 +62,8 @@ class IOControllerNode(Node):
         poll_rate = self.get_parameter('poll_rate').value
         self.poll_timer = self.create_timer(poll_rate / 1000.0, self.poll_callback)
 
+        self._watchdog_check_timer = self.create_timer(1.0, self._watchdog_check)
+
         self.get_logger().info(
             f'IOControllerNode started with {len(self.io_points)} IO points '
             f'(simulate={self.simulate})')
@@ -69,10 +85,54 @@ class IOControllerNode(Node):
                         'value': 0.0,
                         'state': False,
                     }
+                    if point['type'] in ('digital_in',):
+                        self._debounce_buffers[name] = deque(maxlen=self._debounce_samples)
+                    if point['type'] in ('analog_in',):
+                        self._analog_filtered[name] = 0.0
 
             self.get_logger().info(f'Loaded {len(self.io_points)} IO points from {config_file}')
         except Exception as e:
             self.get_logger().error(f'Failed to load config file {config_file}: {e}')
+
+    def register_change_callback(self, io_name, callback):
+        if io_name not in self._change_callbacks:
+            self._change_callbacks[io_name] = []
+        self._change_callbacks[io_name].append(callback)
+
+    def register_watchdog(self, io_name, timeout=None):
+        if io_name not in self.io_points:
+            self.get_logger().warn(f'Cannot register watchdog for unknown IO point: {io_name}')
+            return
+        wd_timeout = timeout if timeout is not None else self._watchdog_timeout
+        self._watchdog_timers[io_name] = wd_timeout
+        self._watchdog_last_update[io_name] = time.time()
+
+    def _watchdog_check(self):
+        now = time.time()
+        for io_name, timeout in self._watchdog_timers.items():
+            if io_name in self._watchdog_last_update:
+                elapsed = now - self._watchdog_last_update[io_name]
+                if elapsed > timeout:
+                    self.get_logger().warn(
+                        f'Watchdog: IO point {io_name} has not updated for {elapsed:.1f}s')
+
+    def _apply_debounce(self, name, raw_state):
+        if name not in self._debounce_buffers:
+            return raw_state
+        buf = self._debounce_buffers[name]
+        buf.append(raw_state)
+        if len(buf) < self._debounce_samples:
+            return raw_state
+        return all(buf)
+
+    def _apply_analog_filter(self, name, raw_value):
+        if name not in self._analog_filtered:
+            self._analog_filtered[name] = raw_value
+            return raw_value
+        alpha = self._analog_filter_alpha
+        filtered = alpha * raw_value + (1.0 - alpha) * self._analog_filtered[name]
+        self._analog_filtered[name] = filtered
+        return filtered
 
     def read_all_io(self):
         if self.simulate:
@@ -86,11 +146,15 @@ class IOControllerNode(Node):
 
                 if io_type == 'digital_in':
                     if pin in self.gpio_lines:
-                        val = self.gpio_lines[pin].get_value()
-                        point['state'] = bool(val)
-                        point['value'] = float(val)
+                        raw_val = self.gpio_lines[pin].get_value()
+                        debounced = self._apply_debounce(name, bool(raw_val))
+                        point['state'] = debounced
+                        point['value'] = float(debounced)
                 elif io_type == 'analog_in':
-                    pass
+                    raw_val = point['value']
+                    filtered = self._apply_analog_filter(name, raw_val)
+                    point['value'] = filtered
+                    point['state'] = abs(filtered) > 1e-6
         except Exception as e:
             self.get_logger().error(f'Failed to read IO: {e}')
 
@@ -128,6 +192,9 @@ class IOControllerNode(Node):
                 self.get_logger().error(f'Failed to write IO {io_name}: {e}')
                 return False
 
+        if io_name in self._watchdog_last_update:
+            self._watchdog_last_update[io_name] = time.time()
+
         return True
 
     def poll_callback(self):
@@ -150,6 +217,16 @@ class IOControllerNode(Node):
             prev = previous_states.get(name)
             if prev and (prev['value'] != point['value'] or prev['state'] != point['state']):
                 self.io_changed_pub.publish(msg)
+                if name in self._change_callbacks:
+                    for cb in self._change_callbacks[name]:
+                        try:
+                            cb(name, point)
+                        except Exception as e:
+                            self.get_logger().error(f'IO change callback error for {name}: {e}')
+
+            if name in self._watchdog_last_update:
+                if prev and (prev['value'] != point['value'] or prev['state'] != point['state']):
+                    self._watchdog_last_update[name] = time.time()
 
     def set_digital_output_callback(self, msg):
         for name, point in self.io_points.items():

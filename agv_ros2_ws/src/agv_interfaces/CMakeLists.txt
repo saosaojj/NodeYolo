@@ -16,6 +16,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/YoloResult.msg"
   "msg/WiFiStatus.msg"
   "msg/BluetoothDevice.msg"
+  "msg/BatteryState.msg"
   "srv/ReadPlc.srv"
   "srv/WritePlc.srv"
   "srv/SetIO.srv"
@@ -25,6 +26,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/ConnectBluetooth.srv"
   "srv/SetModel.srv"
   "srv/SetConfidence.srv"
+  "srv/SetCharging.srv"
   "action/NavigateTo.action"
   "action/Patrol.action"
   DEPENDENCIES builtin_interfaces geometry_msgs std_msgs sensor_msgs

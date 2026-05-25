@@ -1,0 +1,12 @@
+float64 voltage
+float64 current
+float64 charge_level
+float64 temperature
+float64 health_percent
+string charging_state
+float64 charge_rate
+float64 discharge_rate
+float64 estimated_time_remaining
+int32 charge_cycles
+string battery_type
+builtin_interfaces/Time timestamp

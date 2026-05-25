@@ -1,10 +1,14 @@
 import asyncio
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+import time
+from collections import defaultdict
+from functools import wraps
+
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, field_validator
 from typing import List, Optional
 
-from agv_interfaces.msg import AGVStatus, PlcData, IOState, YoloResult, WiFiStatus, BluetoothDevice
-from agv_interfaces.srv import ControlAGV, ReadPlc, WritePlc, SetIO, TrainModel, ConnectWiFi, ConnectBluetooth
+from agv_interfaces.msg import AGVStatus, PlcData, IOState, YoloResult, WiFiStatus, BluetoothDevice, BatteryState
+from agv_interfaces.srv import ControlAGV, ReadPlc, WritePlc, SetIO, TrainModel, ConnectWiFi, ConnectBluetooth, SetCharging, SetModel
 from agv_interfaces.action import NavigateTo, Patrol
 from geometry_msgs.msg import Twist
 from std_srvs.srv import Trigger
@@ -14,11 +18,26 @@ class ControlCommand(BaseModel):
     command: str
     parameters: List[str] = []
 
+    @field_validator('command')
+    @classmethod
+    def validate_command(cls, v):
+        allowed = {'start', 'stop', 'pause', 'resume', 'charge', 'emergency_stop'}
+        if v.lower() not in allowed:
+            raise ValueError(f'Invalid command: {v}. Allowed: {allowed}')
+        return v.lower()
+
 
 class CmdVelRequest(BaseModel):
     linear_x: float = 0.0
     linear_y: float = 0.0
     angular_z: float = 0.0
+
+    @field_validator('linear_x', 'linear_y', 'angular_z')
+    @classmethod
+    def validate_velocity(cls, v):
+        if abs(v) > 10.0:
+            raise ValueError('Velocity value out of range (-10.0, 10.0)')
+        return v
 
 
 class NavigateRequest(BaseModel):
@@ -33,6 +52,13 @@ class PatrolRequest(BaseModel):
     waypoints_theta: List[float] = []
     loops: int = 1
 
+    @field_validator('loops')
+    @classmethod
+    def validate_loops(cls, v):
+        if v < 1:
+            raise ValueError('Loops must be at least 1')
+        return v
+
 
 class PlcReadRequest(BaseModel):
     device_name: str = ""
@@ -40,12 +66,26 @@ class PlcReadRequest(BaseModel):
     start_address: int = 0
     quantity: int = 1
 
+    @field_validator('quantity')
+    @classmethod
+    def validate_quantity(cls, v):
+        if v < 1 or v > 125:
+            raise ValueError('Quantity must be between 1 and 125')
+        return v
+
 
 class PlcWriteRequest(BaseModel):
     device_name: str = ""
     ip_address: str = ""
     start_address: int = 0
     values: List[int] = []
+
+    @field_validator('values')
+    @classmethod
+    def validate_values(cls, v):
+        if len(v) > 125:
+            raise ValueError('Maximum 125 values allowed')
+        return v
 
 
 class IOSetRequest(BaseModel):
@@ -62,15 +102,43 @@ class TrainRequest(BaseModel):
     learning_rate: float = 0.01
     output_path: str = ""
 
+    @field_validator('epochs')
+    @classmethod
+    def validate_epochs(cls, v):
+        if v < 1:
+            raise ValueError('Epochs must be at least 1')
+        return v
+
+    @field_validator('learning_rate')
+    @classmethod
+    def validate_learning_rate(cls, v):
+        if v <= 0.0 or v > 1.0:
+            raise ValueError('Learning rate must be between 0 and 1')
+        return v
+
 
 class WiFiConnectRequest(BaseModel):
     ssid: str = ""
     password: str = ""
 
+    @field_validator('ssid')
+    @classmethod
+    def validate_ssid(cls, v):
+        if not v.strip():
+            raise ValueError('SSID cannot be empty')
+        return v
+
 
 class BluetoothConnectRequest(BaseModel):
     address: str = ""
     profile: str = "spp"
+
+    @field_validator('address')
+    @classmethod
+    def validate_address(cls, v):
+        if not v.strip():
+            raise ValueError('Bluetooth address cannot be empty')
+        return v
 
 
 def _msg_to_dict(msg):
@@ -88,6 +156,41 @@ def _msg_to_dict(msg):
     return result
 
 
+class RateLimiter:
+    def __init__(self, max_requests=60, window_seconds=60):
+        self._max_requests = max_requests
+        self._window = window_seconds
+        self._requests = defaultdict(list)
+
+    def is_allowed(self, key):
+        now = time.time()
+        self._requests[key] = [t for t in self._requests[key] if now - t < self._window]
+        if len(self._requests[key]) >= self._max_requests:
+            return False
+        self._requests[key].append(now)
+        return True
+
+
+_rate_limiter = RateLimiter(max_requests=60, window_seconds=60)
+_response_cache = {}
+_cache_ttl = 0.5
+_cache_timestamps = {}
+
+
+def _get_cached_response(cache_key):
+    now = time.time()
+    if cache_key in _response_cache:
+        if now - _cache_timestamps.get(cache_key, 0) < _cache_ttl:
+            return _response_cache[cache_key]
+    return None
+
+
+def _set_cached_response(cache_key, data):
+    now = time.time()
+    _response_cache[cache_key] = data
+    _cache_timestamps[cache_key] = now
+
+
 def create_api_router(ros_bridge):
     router = APIRouter(prefix="/api/v1")
 
@@ -97,15 +200,29 @@ def create_api_router(ros_bridge):
     ros_bridge.create_subscription('/yolo_result', YoloResult)
     ros_bridge.create_subscription('/wifi_status', WiFiStatus)
     ros_bridge.create_accumulating_subscription('/bluetooth_devices', BluetoothDevice, 'address')
+    ros_bridge.create_subscription('/battery_state', BatteryState)
 
     ros_bridge.create_publisher('/cmd_vel', Twist)
 
+    @router.middleware("http")
+    async def rate_limit_middleware(request: Request, call_next):
+        client_id = request.client.host if request.client else "unknown"
+        if not _rate_limiter.is_allowed(client_id):
+            raise HTTPException(status_code=429, detail='Rate limit exceeded')
+        response = await call_next(request)
+        return response
+
     @router.get('/agv/status')
     async def get_agv_status():
+        cached = _get_cached_response('agv_status')
+        if cached is not None:
+            return cached
         msg = ros_bridge.get_latest_message('/agv_status')
         if msg is None:
             raise HTTPException(status_code=404, detail='AGV status not available')
-        return _msg_to_dict(msg)
+        result = _msg_to_dict(msg)
+        _set_cached_response('agv_status', result)
+        return result
 
     @router.post('/agv/control')
     async def control_agv(body: ControlCommand):
@@ -166,10 +283,15 @@ def create_api_router(ros_bridge):
 
     @router.get('/plc/status')
     async def get_plc_status():
+        cached = _get_cached_response('plc_status')
+        if cached is not None:
+            return cached
         msg = ros_bridge.get_latest_message('/plc_data')
         if msg is None:
             raise HTTPException(status_code=404, detail='PLC data not available')
-        return _msg_to_dict(msg)
+        result = _msg_to_dict(msg)
+        _set_cached_response('plc_status', result)
+        return result
 
     @router.post('/plc/read')
     async def read_plc(body: PlcReadRequest):
@@ -205,13 +327,19 @@ def create_api_router(ros_bridge):
 
     @router.get('/io/states')
     async def get_io_states():
+        cached = _get_cached_response('io_states')
+        if cached is not None:
+            return cached
         accumulated = ros_bridge.get_accumulated_messages('/io_states')
         if not accumulated:
             msg = ros_bridge.get_latest_message('/io_states')
             if msg is None:
                 raise HTTPException(status_code=404, detail='IO states not available')
-            return [_msg_to_dict(msg)]
-        return [_msg_to_dict(m) for m in accumulated.values()]
+            result = [_msg_to_dict(msg)]
+        else:
+            result = [_msg_to_dict(m) for m in accumulated.values()]
+        _set_cached_response('io_states', result)
+        return result
 
     @router.post('/io/set')
     async def set_io(body: IOSetRequest):
@@ -231,10 +359,15 @@ def create_api_router(ros_bridge):
 
     @router.get('/vision/detections')
     async def get_vision_detections():
+        cached = _get_cached_response('vision_detections')
+        if cached is not None:
+            return cached
         msg = ros_bridge.get_latest_message('/yolo_result')
         if msg is None:
             raise HTTPException(status_code=404, detail='Vision detections not available')
-        return _msg_to_dict(msg)
+        result = _msg_to_dict(msg)
+        _set_cached_response('vision_detections', result)
+        return result
 
     @router.post('/vision/train')
     async def train_model(body: TrainRequest):
@@ -260,10 +393,15 @@ def create_api_router(ros_bridge):
 
     @router.get('/wifi/status')
     async def get_wifi_status():
+        cached = _get_cached_response('wifi_status')
+        if cached is not None:
+            return cached
         msg = ros_bridge.get_latest_message('/wifi_status')
         if msg is None:
             raise HTTPException(status_code=404, detail='WiFi status not available')
-        return _msg_to_dict(msg)
+        result = _msg_to_dict(msg)
+        _set_cached_response('wifi_status', result)
+        return result
 
     @router.post('/wifi/connect')
     async def connect_wifi(body: WiFiConnectRequest):
@@ -292,13 +430,19 @@ def create_api_router(ros_bridge):
 
     @router.get('/bluetooth/devices')
     async def get_bluetooth_devices():
+        cached = _get_cached_response('bluetooth_devices')
+        if cached is not None:
+            return cached
         accumulated = ros_bridge.get_accumulated_messages('/bluetooth_devices')
         if not accumulated:
             msg = ros_bridge.get_latest_message('/bluetooth_devices')
             if msg is None:
                 raise HTTPException(status_code=404, detail='Bluetooth devices not available')
-            return [_msg_to_dict(msg)]
-        return [_msg_to_dict(m) for m in accumulated.values()]
+            result = [_msg_to_dict(msg)]
+        else:
+            result = [_msg_to_dict(m) for m in accumulated.values()]
+        _set_cached_response('bluetooth_devices', result)
+        return result
 
     @router.post('/bluetooth/connect')
     async def connect_bluetooth(body: BluetoothConnectRequest):
@@ -327,6 +471,9 @@ def create_api_router(ros_bridge):
 
     @router.get('/system/info')
     async def get_system_info():
+        cached = _get_cached_response('system_info')
+        if cached is not None:
+            return cached
         import subprocess
         ros_version = ''
         try:
@@ -349,14 +496,17 @@ def create_api_router(ros_bridge):
         except Exception:
             pass
 
-        return {
+        result_data = {
             'ros_version': ros_version,
             'node_list': node_list,
             'topic_list': topic_list,
         }
+        _set_cached_response('system_info', result_data)
+        return result_data
 
     @router.get('/system/health')
     async def get_system_health():
+        ros_bridge.check_health()
         agv_status = ros_bridge.get_latest_message('/agv_status')
         plc_data = ros_bridge.get_latest_message('/plc_data')
         wifi_status = ros_bridge.get_latest_message('/wifi_status')
@@ -388,5 +538,50 @@ def create_api_router(ros_bridge):
         health['overall'] = 'healthy' if all_ok else 'degraded'
 
         return health
+
+    @router.get('/power/status')
+    async def get_power_status():
+        cached = _get_cached_response('power_status')
+        if cached is not None:
+            return cached
+        msg = ros_bridge.get_latest_message('/battery_state')
+        if msg is None:
+            return {
+                'voltage': 0.0, 'current': 0.0, 'charge_level': 0.0,
+                'temperature': 0.0, 'health_percent': 0.0, 'charging_state': 'unknown',
+                'charge_rate': 0.0, 'discharge_rate': 0.0, 'estimated_time_remaining': 0.0,
+                'charge_cycles': 0, 'battery_type': 'unknown'
+            }
+        result = _msg_to_dict(msg)
+        _set_cached_response('power_status', result)
+        return result
+
+    @router.post('/power/charging')
+    async def set_charging(body: dict):
+        command = body.get('command', 'start_charging')
+        future = ros_bridge.call_service('/set_charging', SetCharging, {
+            'command': command,
+        })
+        if future is None:
+            raise HTTPException(status_code=503, detail='Service /set_charging not available')
+        try:
+            response = await asyncio.wait_for(asyncio.wrap_future(future), timeout=10.0)
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=504, detail='Service /set_charging timed out')
+        return {'success': response.success, 'message': response.message, 'charge_level': response.charge_level}
+
+    @router.post('/power/mode')
+    async def set_power_mode(body: dict):
+        mode = body.get('model_path', body.get('mode', 'balanced'))
+        future = ros_bridge.call_service('/set_power_mode', SetModel, {
+            'model_path': mode,
+        })
+        if future is None:
+            raise HTTPException(status_code=503, detail='Service /set_power_mode not available')
+        try:
+            response = await asyncio.wait_for(asyncio.wrap_future(future), timeout=10.0)
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=504, detail='Service /set_power_mode timed out')
+        return {'success': response.success, 'message': response.message}
 
     return router

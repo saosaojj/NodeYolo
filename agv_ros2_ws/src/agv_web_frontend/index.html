@@ -39,6 +39,9 @@
           <a class="nav-item" data-page="io">
             <span>⚙️</span> IO点位
           </a>
+          <a class="nav-item" data-page="power">
+            <span>🔋</span> 电量管理
+          </a>
         </div>
         <div class="nav-section">
           <div class="nav-section-title">智能</div>
@@ -494,6 +497,115 @@
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <div class="page" id="page-power">
+          <div class="page-header">
+            <h2>电量管理系统</h2>
+            <div class="page-header-actions">
+              <button class="btn btn-secondary" id="refreshPower">🔄 刷新</button>
+            </div>
+          </div>
+          
+          <div class="hero-stats">
+            <div class="stat-card">
+              <div class="stat-card-header">
+                <span class="stat-label">电池电量</span>
+                <div class="stat-icon">🔋</div>
+              </div>
+              <div class="stat-value"><span id="powerChargeLevel">--</span><span class="stat-unit">%</span></div>
+              <div class="battery-bar">
+                <div class="battery-fill" id="powerBatteryFill" style="width: 0%"></div>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-header">
+                <span class="stat-label">电池电压</span>
+                <div class="stat-icon">⚡</div>
+              </div>
+              <div class="stat-value"><span id="powerVoltage">--</span><span class="stat-unit">V</span></div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-header">
+                <span class="stat-label">电池电流</span>
+                <div class="stat-icon">📈</div>
+              </div>
+              <div class="stat-value"><span id="powerCurrent">--</span><span class="stat-unit">A</span></div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-header">
+                <span class="stat-label">预估剩余</span>
+                <div class="stat-icon">⏱️</div>
+              </div>
+              <div class="stat-value"><span id="powerTimeRemaining">--</span><span class="stat-unit">min</span></div>
+            </div>
+          </div>
+
+          <div class="card-grid cols-2">
+            <div class="card">
+              <div class="card-header">🔋 电池详情</div>
+              <div class="position-display">
+                <div class="pos-item">
+                  <span class="pos-label">充电状态</span>
+                  <span class="pos-value" id="powerChargingState">--</span>
+                </div>
+                <div class="pos-item">
+                  <span class="pos-label">电池温度</span>
+                  <span class="pos-value" id="powerTemperature">-- °C</span>
+                </div>
+                <div class="pos-item">
+                  <span class="pos-label">电池健康度</span>
+                  <span class="pos-value" id="powerHealth">-- %</span>
+                </div>
+                <div class="pos-item">
+                  <span class="pos-label">充电循环次数</span>
+                  <span class="pos-value" id="powerChargeCycles">--</span>
+                </div>
+                <div class="pos-item">
+                  <span class="pos-label">电池类型</span>
+                  <span class="pos-value" id="powerBatteryType">--</span>
+                </div>
+                <div class="pos-item">
+                  <span class="pos-label">充电速率</span>
+                  <span class="pos-value" id="powerChargeRate">-- A</span>
+                </div>
+                <div class="pos-item">
+                  <span class="pos-label">放电速率</span>
+                  <span class="pos-value" id="powerDischargeRate">-- A</span>
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-header">⚡ 电源模式</div>
+              <div class="position-display">
+                <div class="pos-item">
+                  <span class="pos-label">当前模式</span>
+                  <span class="pos-value" id="powerMode">--</span>
+                </div>
+                <div class="pos-item">
+                  <span class="pos-label">自动充电</span>
+                  <span class="pos-value" id="powerAutoCharge">--</span>
+                </div>
+              </div>
+              <div class="btn-group" style="margin-top: 16px;">
+                <button class="btn btn-primary" id="setModePerformance" style="flex:1;">🚀 性能</button>
+                <button class="btn btn-secondary" id="setModeBalanced" style="flex:1;">⚖️ 均衡</button>
+                <button class="btn btn-warning" id="setModePowerSave" style="flex:1;">🪫 省电</button>
+              </div>
+              <div class="btn-group" style="margin-top: 8px;">
+                <button class="btn btn-primary" id="startCharging" style="flex:1;">🔌 开始充电</button>
+                <button class="btn btn-danger" id="stopCharging" style="flex:1;">⏹ 停止充电</button>
+              </div>
+              <div class="btn-group" style="margin-top: 8px;">
+                <button class="btn btn-secondary" id="dockToCharger" style="flex:1;">🅿️ 对接充电桩</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top: 16px;">
+            <div class="card-header">📊 电量历史曲线</div>
+            <canvas id="powerChartCanvas" style="width:100%;height:200px;background:var(--bg-surface);border-radius:var(--radius-md);"></canvas>
           </div>
         </div>
 

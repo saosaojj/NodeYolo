@@ -1,0 +1,10 @@
+path_planner:
+  ros__parameters:
+    map_resolution: 0.05
+    map_width: 20.0
+    map_height: 20.0
+    robot_radius: 0.3
+    safe_distance: 0.5
+    planning_timeout: 5.0
+    max_iterations: 100000
+    heuristic_weight: 1.0

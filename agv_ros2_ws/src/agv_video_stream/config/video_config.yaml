@@ -1,0 +1,22 @@
+video_server:
+  ros__parameters:
+    port: 8554
+    stream_quality: 85
+    frame_rate: 30
+    resolution_width: 640
+    resolution_height: 480
+    rtsp_path: "stream"
+
+video_recorder:
+  ros__parameters:
+    record_path: "/tmp/agv_recordings"
+    max_storage_gb: 10.0
+    min_free_space_gb: 1.0
+    detection_threshold: 0.7
+    record_duration_sec: 5.0
+    snapshot_interval_sec: 0.5
+    trigger_classes:
+      - "person"
+      - "obstacle"
+      - "forklift"
+      - "pallet"

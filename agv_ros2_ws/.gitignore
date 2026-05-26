@@ -1,0 +1,140 @@
+# =====================================================
+# AGV ROS2 Project .gitignore
+# =====================================================
+
+# ===================================================
+# Build artifacts
+# ===================================================
+build/
+install/
+log/
+*.pyc
+__pycache__/
+*.so
+*.o
+*.a
+*.la
+*.lo
+*.mod
+*.slo
+*.lo
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+
+# ===================================================
+# IDE and editor files
+# ===================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ===================================================
+# ROS2 specific
+# ===================================================
+*.rosinstall
+*.rosinstall.rosinstall
+*.rosinstall.rosinstall.rosinstall
+.ros/
+.log/
+*.ros2/
+.ros2/
+ros2_ws/
+*.urdf.xacro
+*.urdf.xacro.pyc
+
+# ===================================================
+# Python virtual environments
+# ===================================================
+venv/
+env/
+ENV/
+.venv/
+*.venv/
+virtualenv/
+*.virtualenv/
+env.bak/
+venv.bak/
+
+# ===================================================
+# Database and data files
+# ===================================================
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+data/
+*.dump
+
+# ===================================================
+# Configuration files with secrets
+# ===================================================
+.env
+.coverage
+.pytest_cache/
+nosetests.xml
+coverage.xml
+
+# ===================================================
+# Docker volumes (keep .gitkeep files)
+# ===================================================
+volumes/config/*
+!volumes/config/.gitkeep
+volumes/data/*
+!volumes/data/.gitkeep
+volumes/logs/*
+!volumes/logs/.gitkeep
+volumes/models/*
+!volumes/models/.gitkeep
+
+# ===================================================
+# Log files
+# ===================================================
+*.log
+logs/
+*.log.*
+
+# ===================================================
+# Node modules (if any JS dependencies)
+# ===================================================
+node_modules/
+package-lock.json
+yarn.lock
+
+# ===================================================
+# Compiled files
+# ===================================================
+*.obj
+*.elf
+*.bin
+*.hex
+*.map
+*.out
+
+# ===================================================
+# Backup files
+# ===================================================
+*.bak
+*.backup
+*.old
+*.orig
+
+# ===================================================
+# Temporary files
+# ===================================================
+*.tmp
+*.temp
+*.cache
+.cache/
+*.swp
+*.swo
+*~
+*.pid
+*.seed
+*.pid.lock

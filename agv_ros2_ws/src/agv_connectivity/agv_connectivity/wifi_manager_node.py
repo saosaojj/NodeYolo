@@ -1,3 +1,4 @@
+# WiFi管理节点模块，负责WiFi网络的扫描、连接、断开和状态监控
 import subprocess
 import time
 
@@ -11,11 +12,13 @@ from std_msgs.msg import String
 from std_srvs.srv import Trigger
 
 
+# WiFi管理节点类，通过nmcli工具管理WiFi连接，支持自动重连和信号质量监控
 class WiFiManagerNode(Node):
 
     def __init__(self):
         super().__init__('wifi_manager_node')
 
+        # 声明WiFi管理参数
         self.declare_parameter('check_rate', 5.0)
         self.declare_parameter('interface', 'wlan0')
         self.declare_parameter('auto_reconnect', True)
@@ -23,12 +26,14 @@ class WiFiManagerNode(Node):
         self.declare_parameter('scan_cache_ttl', 30.0)
         self.declare_parameter('quality_check_interval', 10.0)
 
+        # 当前连接状态相关变量
         self._current_ssid = ''
         self._current_password = ''
         self._known_networks = self.get_parameter('known_networks').value
         self._scan_cache_ttl = self.get_parameter('scan_cache_ttl').value
         self._quality_check_interval = self.get_parameter('quality_check_interval').value
 
+        # 扫描缓存和连接质量相关变量
         self._scan_cache = []
         self._scan_cache_time = 0.0
         self._connection_quality = 0
@@ -36,14 +41,17 @@ class WiFiManagerNode(Node):
         self._reconnect_attempts = 0
         self._max_reconnect_attempts = 5
 
+        # 创建可靠QoS配置
         qos_profile = QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE)
 
+        # 创建WiFi状态和扫描结果发布者
         self._wifi_status_pub = self.create_publisher(
             WiFiStatus, 'wifi_status', qos_profile)
 
         self._wifi_scan_results_pub = self.create_publisher(
             WiFiStatus, 'wifi_scan_results', qos_profile)
 
+        # 创建WiFi管理相关的三个服务：连接、断开、扫描
         self._connect_wifi_srv = self.create_service(
             ConnectWiFi, 'connect_wifi', self.connect_wifi_callback)
 
@@ -53,14 +61,17 @@ class WiFiManagerNode(Node):
         self._scan_wifi_srv = self.create_service(
             Trigger, 'scan_wifi', self.scan_wifi_callback)
 
+        # 创建定时器，定期检查WiFi状态
         check_rate = self.get_parameter('check_rate').get_parameter_value().double_value
         self._timer = self.create_timer(1.0 / check_rate, self.check_status_callback)
 
+        # 检查nmcli工具是否可用
         self._nmcli_available = self._check_nmcli()
 
         if not self._nmcli_available:
             self.get_logger().warn('nmcli is not available. WiFi management will be limited.')
 
+    # 检查系统中nmcli命令是否可用
     def _check_nmcli(self):
         try:
             subprocess.run(
@@ -72,6 +83,7 @@ class WiFiManagerNode(Node):
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return False
 
+    # 执行nmcli命令的通用方法
     def _run_nmcli(self, args, timeout=30):
         if not self._nmcli_available:
             return None, 'nmcli is not available'
@@ -90,6 +102,7 @@ class WiFiManagerNode(Node):
         except Exception as e:
             return None, str(e)
 
+    # 获取当前WiFi信号质量百分比
     def _get_signal_quality(self):
         interface = self.get_parameter('interface').get_parameter_value().string_value
         signal_strength_stdout, _ = self._run_nmcli(
@@ -104,8 +117,10 @@ class WiFiManagerNode(Node):
                     return 0
         return 0
 
+    # 检查WiFi连接质量，信号过低时尝试切换到备用网络
     def _check_connection_quality(self):
         now = time.time()
+        # 未到检查间隔时跳过
         if now - self._last_quality_check < self._quality_check_interval:
             return
         self._last_quality_check = now
@@ -116,16 +131,20 @@ class WiFiManagerNode(Node):
         quality = self._get_signal_quality()
         self._connection_quality = quality
 
+        # 信号质量低于20%时尝试切换到备用网络
         if quality < 20 and quality > 0:
             self.get_logger().warn(f'WiFi signal quality is poor: {quality}%')
             self._attempt_fallback()
 
+    # 尝试切换到已知网络列表中的下一个备用网络
     def _attempt_fallback(self):
         if not self._known_networks:
             return
+        # 提取已知网络的SSID列表
         known_ssids = [n if isinstance(n, str) else n.get('ssid', '') for n in self._known_networks]
         if self._current_ssid in known_ssids:
             current_idx = known_ssids.index(self._current_ssid)
+            # 尝试连接当前网络之后的下一个已知网络
             if current_idx < len(known_ssids) - 1:
                 fallback_ssid = known_ssids[current_idx + 1]
                 self.get_logger().info(f'Attempting fallback to network: {fallback_ssid}')
@@ -137,11 +156,14 @@ class WiFiManagerNode(Node):
                     self._current_ssid = fallback_ssid
                     self._reconnect_attempts = 0
 
+    # 获取WiFi扫描结果，支持缓存机制避免频繁扫描
     def _get_cached_scan_results(self):
         now = time.time()
+        # 缓存未过期时直接返回缓存结果
         if self._scan_cache and (now - self._scan_cache_time) < self._scan_cache_ttl:
             return self._scan_cache
 
+        # 执行WiFi扫描
         stdout, stderr = self._run_nmcli(
             ['-t', '-f', 'SSID,SIGNAL,SECURITY,FREQ', 'device', 'wifi', 'list'],
             timeout=30)
@@ -149,6 +171,7 @@ class WiFiManagerNode(Node):
         if stdout is None:
             return self._scan_cache
 
+        # 解析扫描结果
         results = []
         for line in stdout.split('\n'):
             if not line:
@@ -166,13 +189,16 @@ class WiFiManagerNode(Node):
                     pass
                 results.append(scan_entry)
 
+        # 更新缓存
         self._scan_cache = results
         self._scan_cache_time = now
         return results
 
+    # 定时器回调，定期检查WiFi连接状态并发布状态信息
     def check_status_callback(self):
         status_msg = WiFiStatus()
 
+        # nmcli不可用时发布断开状态
         if not self._nmcli_available:
             status_msg.connected = False
             status_msg.ssid = ''
@@ -182,9 +208,11 @@ class WiFiManagerNode(Node):
             self._wifi_status_pub.publish(status_msg)
             return
 
+        # 查询当前活动的WiFi连接
         stdout, _ = self._run_nmcli(
             ['-t', '-f', 'NAME,TYPE,DEVICE', 'con', 'show', '--active'], timeout=10)
 
+        # 解析活动连接中的WiFi网络SSID
         active_ssid = ''
         if stdout:
             for line in stdout.split('\n'):
@@ -195,9 +223,11 @@ class WiFiManagerNode(Node):
                         break
 
         if active_ssid:
+            # 已连接状态：获取IP地址、信号强度和MAC地址
             status_msg.connected = True
             status_msg.ssid = active_ssid
 
+            # 获取IP地址
             ip_stdout, _ = self._run_nmcli(
                 ['-t', '-f', 'IP4.ADDRESS', 'dev', 'show', self.get_parameter('interface').get_parameter_value().string_value],
                 timeout=10)
@@ -206,6 +236,7 @@ class WiFiManagerNode(Node):
                 if ':' in ip_line:
                     status_msg.ip_address = ip_line.split(':')[1].split('/')[0]
 
+            # 获取信号强度
             signal_strength_stdout, _ = self._run_nmcli(
                 ['-t', '-f', 'GENERAL.STRENGTH', 'dev', 'show', self.get_parameter('interface').get_parameter_value().string_value],
                 timeout=10)
@@ -217,6 +248,7 @@ class WiFiManagerNode(Node):
                     except ValueError:
                         status_msg.signal_strength = 0
 
+            # 获取MAC地址
             mac_stdout, _ = self._run_nmcli(
                 ['-t', '-f', 'GENERAL.HWADDR', 'dev', 'show', self.get_parameter('interface').get_parameter_value().string_value],
                 timeout=10)
@@ -225,27 +257,33 @@ class WiFiManagerNode(Node):
                 if ':' in mac_line:
                     status_msg.mac_address = mac_line.split(':')[1]
 
+            # 自动重连模式下更新当前SSID和重置重连计数
             if self.get_parameter('auto_reconnect').get_parameter_value().bool_value:
                 self._current_ssid = active_ssid
                 self._reconnect_attempts = 0
 
+            # 检查连接质量
             self._check_connection_quality()
         else:
+            # 未连接状态：清空状态信息
             status_msg.connected = False
             status_msg.ssid = ''
             status_msg.ip_address = ''
             status_msg.signal_strength = 0
             status_msg.mac_address = ''
 
+            # 自动重连模式下尝试重新连接
             if (self.get_parameter('auto_reconnect').get_parameter_value().bool_value
                     and self._current_ssid):
                 self._attempt_reconnect()
 
         self._wifi_status_pub.publish(status_msg)
 
+    # 尝试重新连接到之前连接的WiFi网络
     def _attempt_reconnect(self):
         if not self._current_ssid:
             return
+        # 超过最大重连次数时尝试切换到备用网络
         if self._reconnect_attempts >= self._max_reconnect_attempts:
             self.get_logger().warn('Max reconnect attempts reached, trying fallback')
             self._attempt_fallback()
@@ -262,6 +300,7 @@ class WiFiManagerNode(Node):
         else:
             self.get_logger().warn(f'Auto-reconnect to {self._current_ssid} failed (attempt {self._reconnect_attempts})')
 
+    # WiFi连接服务回调，连接到指定SSID的WiFi网络
     def connect_wifi_callback(self, request, response):
         if not self._nmcli_available:
             response.success = False
@@ -271,6 +310,7 @@ class WiFiManagerNode(Node):
 
         self.get_logger().info(f'Connecting to WiFi: {request.ssid}')
 
+        # 构建nmcli连接命令，有密码时添加密码参数
         args = ['device', 'wifi', 'connect', request.ssid]
         if request.password:
             args.extend(['password', request.password])
@@ -284,6 +324,7 @@ class WiFiManagerNode(Node):
             self._current_password = request.password
             self._reconnect_attempts = 0
 
+            # 获取连接后的IP地址
             ip_stdout, _ = self._run_nmcli(
                 ['-t', '-f', 'IP4.ADDRESS', 'dev', 'show', self.get_parameter('interface').get_parameter_value().string_value],
                 timeout=10)
@@ -302,6 +343,7 @@ class WiFiManagerNode(Node):
 
         return response
 
+    # WiFi断开服务回调，断开当前WiFi连接
     def disconnect_wifi_callback(self, request, response):
         if not self._nmcli_available:
             response.success = False
@@ -310,10 +352,12 @@ class WiFiManagerNode(Node):
 
         self.get_logger().info('Disconnecting from WiFi')
 
+        # 断开指定网络接口的WiFi连接
         stdout, stderr = self._run_nmcli(
             ['device', 'disconnect', self.get_parameter('interface').get_parameter_value().string_value],
             timeout=15)
 
+        # 判断断开结果
         if stdout or (stderr and 'disconnected' in stderr.lower()):
             response.success = True
             response.message = 'Successfully disconnected from WiFi'
@@ -328,6 +372,7 @@ class WiFiManagerNode(Node):
 
         return response
 
+    # WiFi扫描服务回调，扫描周围WiFi网络并发布扫描结果
     def scan_wifi_callback(self, request, response):
         if not self._nmcli_available:
             response.success = False
@@ -336,9 +381,11 @@ class WiFiManagerNode(Node):
 
         self.get_logger().info('Scanning for WiFi networks')
 
+        # 清空扫描缓存以强制重新扫描
         self._scan_cache = []
         self._scan_cache_time = 0.0
 
+        # 执行WiFi扫描
         stdout, stderr = self._run_nmcli(
             ['-t', '-f', 'SSID,SIGNAL,SECURITY,FREQ', 'device', 'wifi', 'list'],
             timeout=30)
@@ -348,6 +395,7 @@ class WiFiManagerNode(Node):
             response.message = f'Scan failed: {stderr}'
             return response
 
+        # 解析扫描结果并逐个发布
         results = []
         for line in stdout.split('\n'):
             if not line:
@@ -369,6 +417,7 @@ class WiFiManagerNode(Node):
                     'signal': scan_msg.signal_strength,
                 })
 
+        # 更新扫描缓存
         self._scan_cache = results
         self._scan_cache_time = time.time()
 
@@ -378,6 +427,7 @@ class WiFiManagerNode(Node):
         return response
 
 
+# 主函数，初始化ROS2并运行WiFi管理节点
 def main(args=None):
     rclpy.init(args=args)
     node = WiFiManagerNode()

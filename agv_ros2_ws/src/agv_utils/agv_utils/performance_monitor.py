@@ -1,3 +1,4 @@
+# 性能监控模块，提供函数计时、调用计数和内存追踪功能，支持ROS2话题发布统计信息
 import rclpy
 from rclpy.node import Node
 from rclpy.parameter import Parameter
@@ -10,6 +11,8 @@ import os
 from typing import Dict, Any, Callable
 
 
+# PerformanceMonitor: 性能监控ROS2节点
+# 提供函数级别的计时、计数和内存追踪装饰器，定期发布性能统计数据
 class PerformanceMonitor(Node):
     def __init__(self):
         super().__init__('performance_monitor')
@@ -19,21 +22,26 @@ class PerformanceMonitor(Node):
         self._monitor_rate = self.get_parameter('monitor_rate').value
         self._alert_threshold_ms = self.get_parameter('alert_threshold_ms').value
 
+        # 性能统计数据字典，键为函数名
         self._stats = {}
         self._stats_lock = threading.Lock()
+        # 当前进程对象，用于获取CPU和内存信息
         self._process = psutil.Process(os.getpid())
 
+        # 创建性能统计话题发布者
         self._stats_publisher = self.create_publisher(
             String,
             '/performance_stats',
             10
         )
 
+        # 创建定时器，按指定频率发布统计信息
         self._timer = self.create_timer(
             1.0 / self._monitor_rate,
             self._publish_stats
         )
 
+    # 定时发布性能统计数据，包含系统CPU和内存信息
     def _publish_stats(self):
         import json
         stats = self.get_stats()
@@ -47,14 +55,17 @@ class PerformanceMonitor(Node):
         msg.data = json.dumps(stats)
         self._stats_publisher.publish(msg)
 
+    # 获取当前性能统计数据的副本
     def get_stats(self) -> Dict[str, Any]:
         with self._stats_lock:
             return dict(self._stats)
 
+    # 重置所有性能统计数据
     def reset_stats(self):
         with self._stats_lock:
             self._stats.clear()
 
+    # 计时装饰器（方法版），记录函数执行耗时，保留最近100次记录
     def timed(self, func: Callable) -> Callable:
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
@@ -71,6 +82,7 @@ class PerformanceMonitor(Node):
             return result
         return wrapper
 
+    # 计数装饰器（方法版），统计函数调用次数
     def counted(self, func: Callable) -> Callable:
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
@@ -82,6 +94,7 @@ class PerformanceMonitor(Node):
             return result
         return wrapper
 
+    # 内存追踪装饰器（方法版），记录函数执行前后的内存变化
     def memory_tracked(self, func: Callable) -> Callable:
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
@@ -98,6 +111,7 @@ class PerformanceMonitor(Node):
         return wrapper
 
 
+# TimerContext: 计时上下文管理器，用于with语句中测量代码块耗时
 class TimerContext:
     def __init__(self, monitor: PerformanceMonitor, name: str):
         self._monitor = monitor
@@ -119,6 +133,7 @@ class TimerContext:
             self._monitor._stats[self._name]['count'] += 1
 
 
+# 计时装饰器（函数版），接收monitor实例作为参数
 def timed(monitor: PerformanceMonitor):
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
@@ -138,6 +153,7 @@ def timed(monitor: PerformanceMonitor):
     return decorator
 
 
+# 计数装饰器（函数版），接收monitor实例作为参数
 def counted(monitor: PerformanceMonitor):
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
@@ -152,6 +168,7 @@ def counted(monitor: PerformanceMonitor):
     return decorator
 
 
+# 内存追踪装饰器（函数版），接收monitor实例作为参数
 def memory_tracked(monitor: PerformanceMonitor):
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
@@ -171,6 +188,7 @@ def memory_tracked(monitor: PerformanceMonitor):
     return decorator
 
 
+# 节点入口函数
 def main(args=None):
     rclpy.init(args=args)
     node = PerformanceMonitor()

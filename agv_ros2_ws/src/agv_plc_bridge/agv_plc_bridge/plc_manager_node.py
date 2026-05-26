@@ -1,3 +1,4 @@
+# PLC管理节点，支持多PLC设备的动态添加/删除、配置管理和健康检查
 import threading
 import yaml
 from dataclasses import dataclass, field
@@ -10,6 +11,7 @@ from agv_interfaces.srv import ReadPlc, WritePlc, SetConfig, GetConfig, SaveConf
 from pymodbus.client import ModbusTcpClient
 
 
+# PlcDevice: 单个PLC设备的数据模型，包含连接信息和状态
 @dataclass
 class PlcDevice:
     name: str = ''
@@ -26,16 +28,21 @@ class PlcDevice:
     retry_backoff: float = 1.0
     max_retry_backoff: float = 30.0
     last_successful_poll: float = 0.0
+    # 重连锁，防止多线程同时重连同一设备
     reconnect_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     is_master: bool = True
+    # 从站控制映射，用于主站控制从站
     slave_control_map: Dict[str, Dict] = field(default_factory=dict)
 
 
+# PlcManagerNode: 管理多个PLC设备的ROS2节点
+# 提供设备动态管理、配置读写服务、健康检查和自动从站控制功能
 class PlcManagerNode(Node):
 
     def __init__(self):
         super().__init__('plc_manager_node')
 
+        # 声明节点参数
         self.declare_parameter('plc_config_file', '')
         self.declare_parameter('poll_rate_ms', 100)
         self.declare_parameter('default_timeout', 5.0)
@@ -43,30 +50,38 @@ class PlcManagerNode(Node):
         self.declare_parameter('health_check_interval', 10.0)
         self.declare_parameter('auto_slave_control', True)
 
+        # 设备和发布者字典
         self.devices: Dict[str, PlcDevice] = {}
         self.publishers: Dict[str, object] = {}
         self._device_timeouts: Dict[str, float] = {}
+        # 配置锁，保护设备字典的并发访问
         self._config_lock = threading.Lock()
 
+        # 获取参数值
         self._default_timeout = self.get_parameter('default_timeout').value
         self._max_retry_backoff = self.get_parameter('max_retry_backoff').value
         self._auto_slave_control = self.get_parameter('auto_slave_control').value
 
+        # 当前配置快照
         self._current_config = PlcConfig()
 
+        # 若指定了配置文件则加载
         config_file = self.get_parameter('plc_config_file').value
         if config_file:
             self._load_config(config_file)
 
+        # 创建轮询定时器和健康检查定时器
         poll_rate = self.get_parameter('poll_rate_ms').value
         self.poll_timer = self.create_timer(poll_rate / 1000.0, self.poll_all)
 
         health_interval = self.get_parameter('health_check_interval').value
         self._health_timer = self.create_timer(health_interval, self._health_check)
 
+        # 若启用自动从站控制，创建从站控制定时器
         if self._auto_slave_control:
             self._slave_timer = self.create_timer(0.2, self._slave_control_loop)
 
+        # 创建PLC读写服务和配置管理服务
         self.read_plc_srv = self.create_service(ReadPlc, 'read_plc', self.read_plc_callback)
         self.write_plc_srv = self.create_service(WritePlc, 'write_plc', self.write_plc_callback)
         self.set_config_srv = self.create_service(SetConfig, 'set_plc_config', self.set_config_callback)
@@ -74,10 +89,12 @@ class PlcManagerNode(Node):
         self.save_config_srv = self.create_service(SaveConfig, 'save_plc_config', self.save_config_callback)
         self.load_config_srv = self.create_service(LoadConfig, 'load_plc_config', self.load_config_callback)
 
+        # 配置发布者
         self.config_pub = self.create_publisher(PlcConfig, 'plc_config', 10)
 
         self.get_logger().info(f'PlcManagerNode started with {len(self.devices)} device(s)')
 
+    # 从YAML配置文件加载PLC设备列表
     def _load_config(self, config_file):
         try:
             with open(config_file, 'r') as f:
@@ -103,6 +120,7 @@ class PlcManagerNode(Node):
         except Exception as e:
             self.get_logger().error(f'Failed to load config file {config_file}: {e}')
 
+    # 添加PLC设备，创建Modbus客户端并尝试连接
     def add_plc(self, device_name, ip, port=502, slave_id=1,
                 coil_read_start=0, coil_read_count=16,
                 register_read_start=0, register_read_count=16,
@@ -129,6 +147,7 @@ class PlcManagerNode(Node):
                 slave_control_map=slave_control_map if slave_control_map else {},
             )
 
+            # 创建客户端并尝试连接
             device.client = ModbusTcpClient(host=ip, port=port, timeout=device_timeout)
             result = device.client.connect()
             device.connected = result
@@ -140,11 +159,13 @@ class PlcManagerNode(Node):
                 self.get_logger().warn(f'Failed to connect to {device_name} at {ip}:{port}')
 
             self.devices[device_name] = device
+            # 为每个设备创建独立的状态发布者
             self.publishers[device_name] = self.create_publisher(
                 PlcData, f'plc_status/{device_name}', 10)
 
             self._update_current_config()
 
+    # 移除指定名称的PLC设备，关闭连接并清理资源
     def remove_plc(self, device_name, skip_log=False):
         with self._config_lock:
             if device_name not in self.devices:
@@ -165,6 +186,7 @@ class PlcManagerNode(Node):
 
             self._update_current_config()
 
+    # 更新当前配置快照并发布
     def _update_current_config(self):
         self._current_config = PlcConfig()
         self._current_config.device_names = list(self.devices.keys())
@@ -178,6 +200,7 @@ class PlcManagerNode(Node):
         self._current_config.is_masters = [d.is_master for d in self.devices.values()]
         self.config_pub.publish(self._current_config)
 
+    # 重连指定设备，使用锁保证线程安全，失败时指数退避
     def _reconnect_device(self, device):
         with device.reconnect_lock:
             if device.connected:
@@ -198,6 +221,7 @@ class PlcManagerNode(Node):
                     f'Reconnect to {device.name} failed, next retry backoff {device.retry_backoff:.1f}s')
             return result
 
+    # 健康检查，检测设备是否长时间无响应，必要时触发重连
     def _health_check(self):
         now = self.get_clock().now().nanoseconds / 1e9
         for name, device in self.devices.items():
@@ -211,17 +235,20 @@ class PlcManagerNode(Node):
                     device.connected = False
                     self._reconnect_device(device)
 
+    # 从站控制循环，主站设备根据控制映射执行从站控制逻辑
     def _slave_control_loop(self):
         for name, device in self.devices.items():
             if device.is_master and device.connected and device.slave_control_map:
                 self._execute_slave_control(device)
 
+    # 执行从站控制逻辑（预留实现）
     def _execute_slave_control(self, device):
         try:
             pass
         except Exception as e:
             self.get_logger().debug(f'Slave control for {device.name}: {e}')
 
+    # 轮询所有PLC设备，读取线圈和寄存器数据并发布
     def poll_all(self):
         for name, device in self.devices.items():
             plc_data = PlcData()
@@ -230,6 +257,7 @@ class PlcManagerNode(Node):
             plc_data.connected = device.connected
             plc_data.timestamp = self.get_clock().now().to_msg()
 
+            # 设备未连接时尝试重连
             if not device.connected:
                 self._reconnect_device(device)
                 if not device.connected:
@@ -239,6 +267,7 @@ class PlcManagerNode(Node):
                         self.publishers[name].publish(plc_data)
                     continue
 
+            # 读取线圈状态
             coil_result = device.client.read_coils(
                 address=device.coil_read_start,
                 count=device.coil_read_count,
@@ -252,6 +281,7 @@ class PlcManagerNode(Node):
                 device.connected = False
                 plc_data.coil_values = []
 
+            # 读取保持寄存器
             register_result = device.client.read_holding_registers(
                 address=device.register_read_start,
                 count=device.register_read_count,
@@ -269,6 +299,7 @@ class PlcManagerNode(Node):
             if name in self.publishers:
                 self.publishers[name].publish(plc_data)
 
+    # 根据设备名称或IP地址查找设备
     def _find_device(self, device_name, ip_address):
         if device_name and device_name in self.devices:
             return self.devices[device_name]
@@ -278,6 +309,7 @@ class PlcManagerNode(Node):
                     return dev
         return None
 
+    # PLC读取服务回调，按设备名或IP查找设备并读取保持寄存器
     def read_plc_callback(self, request, response):
         device = self._find_device(request.device_name, request.ip_address)
 
@@ -314,6 +346,7 @@ class PlcManagerNode(Node):
 
         return response
 
+    # PLC写入服务回调，按设备名或IP查找设备并写入保持寄存器
     def write_plc_callback(self, request, response):
         device = self._find_device(request.device_name, request.ip_address)
 
@@ -346,6 +379,7 @@ class PlcManagerNode(Node):
 
         return response
 
+    # 设置配置服务回调，根据请求中的配置数据重建设备列表
     def set_config_callback(self, request, response):
         try:
             with self._config_lock:
@@ -355,6 +389,7 @@ class PlcManagerNode(Node):
                     response.message = 'No config provided'
                     return response
 
+                # 从请求中提取各设备参数列表
                 device_names = getattr(config_data, 'device_names', [])
                 ips = getattr(config_data, 'ips', [])
                 ports = getattr(config_data, 'ports', [])
@@ -370,10 +405,12 @@ class PlcManagerNode(Node):
                     response.message = 'Device name and IP count mismatch'
                     return response
 
+                # 移除不在新配置中的设备
                 for name in list(self.devices.keys()):
                     if name not in device_names:
                         self.remove_plc(name, skip_log=True)
 
+                # 添加或更新设备
                 for i, name in enumerate(device_names):
                     self.add_plc(
                         device_name=name,
@@ -394,6 +431,7 @@ class PlcManagerNode(Node):
             response.message = f'Error: {str(e)}'
         return response
 
+    # 获取配置服务回调，返回当前配置快照
     def get_config_callback(self, request, response):
         try:
             response.config = self._current_config
@@ -404,6 +442,7 @@ class PlcManagerNode(Node):
             response.message = f'Error: {str(e)}'
         return response
 
+    # 保存配置服务回调，将当前设备配置序列化为YAML文件
     def save_config_callback(self, request, response):
         try:
             save_path = request.path or '/tmp/plc_config.yaml'
@@ -429,6 +468,7 @@ class PlcManagerNode(Node):
             response.message = f'Error: {str(e)}'
         return response
 
+    # 加载配置服务回调，从YAML文件加载设备配置
     def load_config_callback(self, request, response):
         try:
             load_path = request.path or '/tmp/plc_config.yaml'
@@ -440,6 +480,7 @@ class PlcManagerNode(Node):
             response.message = f'Error: {str(e)}'
         return response
 
+    # 销毁节点，关闭所有设备连接并清理资源
     def destroy(self):
         for name, device in self.devices.items():
             if device.client:
@@ -450,6 +491,7 @@ class PlcManagerNode(Node):
         super().destroy_node()
 
 
+# 节点入口函数
 def main(args=None):
     rclpy.init(args=args)
     node = PlcManagerNode()

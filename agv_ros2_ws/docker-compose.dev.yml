@@ -1,0 +1,42 @@
+version: "3.8"
+
+# =====================================================
+# 开发环境配置
+# =====================================================
+
+services:
+  agv_dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    image: agv_ros2:development
+    container_name: agv_dev
+    hostname: agv-dev
+    command: dev
+    privileged: true
+    network_mode: host
+    volumes:
+      - .:/agv_ros2_ws
+      - ./volumes/config:/agv_config
+      - ./volumes/data:/agv_data
+      - ./volumes/logs:/agv_logs
+      - /dev:/dev
+      - /sys/class/gpio:/sys/class/gpio
+      - /var/run/dbus:/var/run/dbus
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    environment:
+      - ROS_DOMAIN_ID=30
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - DISPLAY=${DISPLAY}
+      - EDITOR=vim
+      - DEBUG=true
+    stdin_open: true
+    tty: true
+    cap_add:
+      - NET_ADMIN
+      - SYS_RAWIO
+
+networks:
+  default:
+    driver: bridge

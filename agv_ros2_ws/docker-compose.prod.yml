@@ -1,0 +1,50 @@
+version: "3.8"
+
+# =====================================================
+# 生产环境配置
+# =====================================================
+
+services:
+  agv_production:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime-full
+    image: agv_ros2:production
+    container_name: agv_production
+    hostname: agv-production
+    command: launch_all
+    privileged: true
+    network_mode: host
+    restart: always
+    volumes:
+      - ./volumes/config:/agv_config
+      - ./volumes/data:/agv_data
+      - ./volumes/logs:/agv_logs
+      - /dev:/dev
+      - /sys/class/gpio:/sys/class/gpio
+      - /var/run/dbus:/var/run/dbus
+    environment:
+      - ROS_DOMAIN_ID=30
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - AGV_CONFIG_DIR=/agv_config
+      - AGV_DATA_DIR=/agv_data
+      - AGV_LOG_DIR=/agv_logs
+      - ENABLE_VISION=false
+      - AGV_WEB_JWT_SECRET=${AGV_WEB_JWT_SECRET}
+      - LOG_LEVEL=INFO
+    healthcheck:
+      test: ["/docker-healthcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
+
+networks:
+  default:
+    driver: bridge

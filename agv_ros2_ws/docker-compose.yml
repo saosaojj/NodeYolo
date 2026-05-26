@@ -1,43 +1,87 @@
 version: "3.8"
 
+# =====================================================
+# AGV ROS2 Docker Compose 配置
+# =====================================================
+
 services:
+  # ===================================================
+  # AGV 核心服务
+  # ===================================================
   agv_core:
-    build: .
-    image: agv_ros2:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime-full
+    image: agv_ros2:full
     container_name: agv_core
-    command: >
-      /bin/bash -c "source /agv_ros2_ws/install/setup.bash &&
-      ros2 launch agv_navigation navigation.launch.py &
-      ros2 launch agv_io_controller io_controller.launch.py &
-      ros2 launch agv_plc_bridge plc_bridge.launch.py &
-      wait"
+    hostname: agv-core
+    command: launch_all
     privileged: true
     network_mode: host
+    restart: unless-stopped
     volumes:
+      - agv_config:/agv_config
+      - agv_data:/agv_data
+      - agv_logs:/agv_logs
       - /dev:/dev
       - /sys/class/gpio:/sys/class/gpio
       - /var/run/dbus:/var/run/dbus
+      - /run/dbus:/run/dbus
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
     environment:
       - ROS_DOMAIN_ID=30
       - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-    restart: unless-stopped
+      - AGV_CONFIG_DIR=/agv_config
+      - AGV_DATA_DIR=/agv_data
+      - AGV_LOG_DIR=/agv_logs
+      - ENABLE_VISION=false
+      - PYTHONUNBUFFERED=1
+    devices:
+      - /dev/gpiochip0:/dev/gpiochip0
+    cap_add:
+      - NET_ADMIN
+      - SYS_RAWIO
+      - SYS_ADMIN
+    healthcheck:
+      test: ["/docker-healthcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
 
+  # ===================================================
+  # AGV 视觉服务（可选，需要GPU）
+  # ===================================================
   agv_vision:
-    build: .
-    image: agv_ros2:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime-full
+    image: agv_ros2:full
     container_name: agv_vision
-    command: >
-      /bin/bash -c "source /agv_ros2_ws/install/setup.bash &&
-      ros2 launch agv_vision vision.launch.py"
+    hostname: agv-vision
+    command: launch_vision
     runtime: nvidia
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - agv_models:/agv_ros2_ws/models
+      - agv_data:/agv_ros2_ws/datasets
+      - agv_config:/agv_config
+      - agv_logs:/agv_logs
     environment:
       - ROS_DOMAIN_ID=30
       - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-    volumes:
-      - agv_models:/agv_ros2_ws/models
-      - agv_data:/agv_ros2_ws/datasets
+      - ENABLE_VISION=true
+      - PYTHONUNBUFFERED=1
     deploy:
       resources:
         reservations:
@@ -45,26 +89,177 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    restart: unless-stopped
+    depends_on:
+      - agv_core
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/system/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
 
+  # ===================================================
+  # AGV Web 服务
+  # ===================================================
   agv_web:
-    build: .
-    image: agv_ros2:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime-full
+    image: agv_ros2:full
     container_name: agv_web
-    command: >
-      /bin/bash -c "source /agv_ros2_ws/install/setup.bash &&
-      ros2 launch agv_web_server web_server.launch.py"
+    hostname: agv-web
+    command: launch_web
     ports:
       - "8080:8080"
+      - "5020:5020"
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - agv_config:/agv_config
+      - agv_data:/agv_data
+      - agv_logs:/agv_logs
     environment:
       - ROS_DOMAIN_ID=30
       - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - AGV_WEB_HOST=0.0.0.0
+      - AGV_WEB_PORT=8080
+      - AGV_CONFIG_DIR=/agv_config
+      - AGV_DATA_DIR=/agv_data
+      - AGV_LOG_DIR=/agv_logs
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      agv_core:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/system/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+  # ===================================================
+  # AGV Web 精简版（仅Web服务）
+  # ===================================================
+  agv_web_light:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime-web
+    image: agv_ros2:web
+    container_name: agv_web_light
+    hostname: agv-web-light
+    ports:
+      - "8081:8080"
     restart: unless-stopped
+    volumes:
+      - agv_config:/agv_config
+      - agv_data:/agv_data
+      - agv_logs:/agv_logs
+    environment:
+      - AGV_WEB_HOST=0.0.0.0
+      - AGV_WEB_PORT=8080
+      - AGV_CONFIG_DIR=/agv_config
+      - AGV_DATA_DIR=/agv_data
+      - AGV_LOG_DIR=/agv_logs
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/system/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
 
+  # ===================================================
+  # AGV 开发环境
+  # ===================================================
+  agv_dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    image: agv_ros2:dev
+    container_name: agv_dev
+    hostname: agv-dev
+    command: dev
+    privileged: true
+    network_mode: host
+    volumes:
+      - agv_workspace:/agv_ros2_ws
+      - agv_config:/agv_config
+      - agv_data:/agv_data
+      - agv_logs:/agv_logs
+      - /dev:/dev
+      - /sys/class/gpio:/sys/class/gpio
+      - /var/run/dbus:/var/run/dbus
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    environment:
+      - ROS_DOMAIN_ID=30
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - DISPLAY=${DISPLAY}
+      - EDITOR=vim
+    stdin_open: true
+    tty: true
+    cap_add:
+      - NET_ADMIN
+      - SYS_RAWIO
+
+# ===================================================
+# 网络配置
+# ===================================================
 networks:
-  agv_net:
+  default:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
 
+# ===================================================
+# 存储卷
+# ===================================================
 volumes:
-  agv_models:
+  agv_config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./volumes/config
   agv_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./volumes/data
+  agv_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./volumes/logs
+  agv_models:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./volumes/models
+  agv_workspace:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: .

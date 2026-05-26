@@ -1190,7 +1190,14 @@ function init3dScanner() {
   }, 500));
 }
 
+/**
+ * 初始化摄像头配置页面
+ * 
+ * 设置默认配置、绑定加载/保存按钮事件、
+ * 启动预览图轮询。
+ */
 function initCameraConfig() {
+  // 初始化默认摄像头配置
   appState.cameraConfig = {
     device: '0',
     use_rtsp: false,
@@ -1199,6 +1206,7 @@ function initCameraConfig() {
     height: 480
   };
 
+  // 加载按钮点击事件：从后端获取配置并更新界面
   document.getElementById('loadCameraConfig').addEventListener('click', function() {
     apiGet('/api/v1/camera/config').then(function(data) {
       if (data) {
@@ -1213,6 +1221,7 @@ function initCameraConfig() {
     }).catch(function() {});
   });
 
+  // 保存按钮点击事件：从界面读取配置并保存到后端
   document.getElementById('saveCameraConfig').addEventListener('click', function() {
     appState.cameraConfig = {
       device: document.getElementById('cameraDevice').value,
@@ -1226,6 +1235,7 @@ function initCameraConfig() {
     }).catch(function() {});
   });
 
+  // 轮询获取摄像头预览图，仅在配置页面激活时执行
   pollIntervals.push(setInterval(function() {
     if (document.getElementById('page-config-camera').classList.contains('active')) {
       apiGet('/api/v1/camera/preview').then(function(data) {
@@ -1237,31 +1247,48 @@ function initCameraConfig() {
   }, 300));
 }
 
+/**
+ * 在 canvas 上绘制摄像头预览图
+ * 
+ * @param {string} base64Image - Base64 编码的 JPEG 图像
+ */
 function drawCameraPreview(base64Image) {
   var canvas = document.getElementById('cameraPreview');
   if (!canvas) return;
   var ctx = canvas.getContext('2d');
   var img = new Image();
   img.onload = function() {
+    // 图像加载完成后，绘制到 canvas 上并隐藏占位文本
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     document.getElementById('cameraPreviewEmpty').style.display = 'none';
   };
   img.src = 'data:image/jpeg;base64,' + base64Image;
 }
 
+/**
+ * 初始化 PLC 配置页面
+ * 
+ * 设置设备列表、绑定各按钮事件、启动连接状态轮询。
+ */
 function initPlcConfig() {
+  // PLC 设备列表和选中设备索引
   appState.plcDevices = [];
   appState.selectedPlcIndex = -1;
 
+  /**
+   * 刷新 PLC 设备表格显示
+   */
   function refreshPlcTable() {
     var tbody = document.getElementById('plcDeviceTable');
     tbody.innerHTML = '';
     for (var i = 0; i < appState.plcDevices.length; i++) {
       var dev = appState.plcDevices[i];
       var tr = document.createElement('tr');
+      // 构造表格行 HTML，包含单选框、设备信息和连接状态
       tr.innerHTML = '<td><input type="radio" name="plcSelect" value="' + i + '"' + (i === appState.selectedPlcIndex ? ' checked' : '') + '></td><td>' + (dev.name || 'unknown') + '</td><td>' + (dev.ip || '127.0.0.1') + '</td><td>' + (dev.port || 502) + '</td><td>' + (dev.slave_id || 1) + '</td><td>' + (dev.is_master ? '主站' : '从站') + '</td><td><span class="status-dot ' + (dev.connected ? 'connected' : 'disconnected') + '" style="display:inline-block"></span> ' + (dev.connected ? '已连接' : '未连接') + '</td>';
       tbody.appendChild(tr);
     }
+    // 重新绑定单选框的选择事件
     var radios = document.getElementsByName('plcSelect');
     for (var i = 0; i < radios.length; i++) {
       radios[i].addEventListener('change', function(e) {
@@ -1271,6 +1298,12 @@ function initPlcConfig() {
     }
   }
 
+  /**
+   * 更新 PLC 编辑卡片显示
+   * 
+   * 根据选中的设备更新表单字段的值，
+   * 若未选中则隐藏卡片。
+   */
   function updatePlcEditCard() {
     if (appState.selectedPlcIndex >= 0 && appState.selectedPlcIndex < appState.plcDevices.length) {
       var dev = appState.plcDevices[appState.selectedPlcIndex];
@@ -1289,6 +1322,7 @@ function initPlcConfig() {
     }
   }
 
+  // 加载配置按钮点击事件
   document.getElementById('loadPlcConfig').addEventListener('click', function() {
     apiGet('/api/v1/plc/config').then(function(data) {
       if (data) {
@@ -1301,12 +1335,14 @@ function initPlcConfig() {
     }).catch(function() {});
   });
 
+  // 保存配置按钮点击事件
   document.getElementById('savePlcConfig').addEventListener('click', function() {
     apiPost('/api/v1/plc/config', { devices: appState.plcDevices }).then(function() {
       showToast('PLC配置保存成功', 'success');
     }).catch(function() {});
   });
 
+  // 添加新 PLC 设备按钮点击事件
   document.getElementById('addPlcDevice').addEventListener('click', function() {
     var newDevice = {
       name: 'device_' + (appState.plcDevices.length + 1),
@@ -1326,6 +1362,7 @@ function initPlcConfig() {
     updatePlcEditCard();
   });
 
+  // 删除选中 PLC 设备按钮点击事件
   document.getElementById('removePlcDevice').addEventListener('click', function() {
     if (appState.selectedPlcIndex >= 0) {
       appState.plcDevices.splice(appState.selectedPlcIndex, 1);
@@ -1336,6 +1373,7 @@ function initPlcConfig() {
     }
   });
 
+  // 更新选中 PLC 设备配置按钮点击事件
   document.getElementById('updatePlcDevice').addEventListener('click', function() {
     if (appState.selectedPlcIndex >= 0) {
       var dev = appState.plcDevices[appState.selectedPlcIndex];
@@ -1353,6 +1391,7 @@ function initPlcConfig() {
     }
   });
 
+  // 发送从站（AGV）控制命令按钮点击事件
   document.getElementById('sendSlaveCommand').addEventListener('click', function() {
     var cmd = {
       linear_x: parseFloat(document.getElementById('slaveSpeedX').value),
@@ -1364,6 +1403,7 @@ function initPlcConfig() {
     }).catch(function() {});
   });
 
+  // 轮询更新 PLC 设备连接状态，仅在配置页面激活时执行
   pollIntervals.push(setInterval(function() {
     if (document.getElementById('page-config-plc').classList.contains('active')) {
       apiGet('/api/v1/plc/status').then(function(data) {

@@ -31,11 +31,13 @@ from std_srvs.srv import Trigger
 from agv_web_server.config_manager import ConfigManager
 from agv_web_server.camera_manager import CameraManager
 from agv_web_server.plc_manager import PlcManager
+from agv_web_server.database_manager import DatabaseManager
 
 # 初始化管理器单例
 config_mgr = ConfigManager()
 camera_mgr = CameraManager()
 plc_mgr = PlcManager()
+db_mgr = DatabaseManager()
 
 
 class ControlCommand(BaseModel):
@@ -887,5 +889,88 @@ def create_api_router(ros_bridge):
         """发送从站（AGV）控制命令"""
         plc_mgr.send_slave_command(body)
         return {'success': True, 'message': 'Slave command sent'}
+
+    # ==================== 仿真控制 API ====================
+
+    @router.get('/simulation/status')
+    async def get_simulation_status():
+        """获取仿真状态"""
+        status = db_mgr.get_simulation_state()
+        return status
+
+    @router.post('/simulation/status')
+    async def set_simulation_status(body: dict):
+        """设置仿真状态"""
+        sim_enabled = body.get('simulation_enabled', False)
+        cam_sim = body.get('camera_simulation', None)
+        plc_sim = body.get('plc_simulation', None)
+        vision_sim = body.get('vision_simulation', None)
+        
+        # 更新数据库
+        db_mgr.set_simulation_state(
+            sim_enabled,
+            cam_sim,
+            plc_sim,
+            vision_sim
+        )
+        
+        # 更新相应管理器的仿真状态
+        if cam_sim is not None:
+            camera_mgr.set_simulation(cam_sim)
+        if plc_sim is not None:
+            plc_mgr.set_simulation(plc_sim)
+        
+        return {'success': True, 'message': 'Simulation status updated'}
+
+    @router.post('/simulation/camera')
+    async def set_camera_simulation(body: dict):
+        """设置摄像头仿真状态"""
+        enabled = body.get('enabled', False)
+        camera_mgr.set_simulation(enabled)
+        # 更新数据库
+        status = db_mgr.get_simulation_state()
+        db_mgr.set_simulation_state(
+            status.get('simulation_enabled', False),
+            enabled,
+            status.get('plc_simulation', False),
+            status.get('vision_simulation', False)
+        )
+        return {'success': True, 'message': 'Camera simulation updated'}
+
+    @router.post('/simulation/plc')
+    async def set_plc_simulation(body: dict):
+        """设置PLC仿真状态"""
+        enabled = body.get('enabled', False)
+        plc_mgr.set_simulation(enabled)
+        # 更新数据库
+        status = db_mgr.get_simulation_state()
+        db_mgr.set_simulation_state(
+            status.get('simulation_enabled', False),
+            status.get('camera_simulation', False),
+            enabled,
+            status.get('vision_simulation', False)
+        )
+        return {'success': True, 'message': 'PLC simulation updated'}
+
+    # ==================== 数据查询 API ====================
+
+    @router.get('/data/config/history')
+    async def get_config_history(config_type: Optional[str] = None, limit: int = 100):
+        """获取配置变更历史"""
+        history = db_mgr.get_config_history(config_type, limit)
+        return {'history': history}
+
+    @router.get('/data/agv/history')
+    async def get_agv_status_history(start_time: Optional[str] = None, end_time: Optional[str] = None, limit: int = 1000):
+        """获取AGV状态历史"""
+        history = db_mgr.get_agv_status_history(start_time, end_time, limit)
+        return {'history': history}
+
+    @router.post('/data/cleanup')
+    async def cleanup_old_data(body: dict):
+        """清理过期数据"""
+        days = body.get('days', 30)
+        count = db_mgr.clear_old_data(days)
+        return {'success': True, 'message': f'Cleaned up {count} records', 'count': count}
 
     return router

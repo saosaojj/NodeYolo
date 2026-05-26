@@ -1421,6 +1421,97 @@ function initPlcConfig() {
   }, 1000));
 }
 
+/**
+ * 初始化仿真测试页面
+ */
+function initSimulation() {
+  // 仿真状态
+  appState.simulationStatus = {
+    simulation_enabled: false,
+    camera_simulation: false,
+    plc_simulation: false,
+    vision_simulation: false
+  };
+
+  /**
+   * 刷新仿真状态显示
+   */
+  function refreshSimStatus() {
+    var camStatus = appState.simulationStatus.camera_simulation;
+    var plcStatus = appState.simulationStatus.plc_simulation;
+    var visStatus = appState.simulationStatus.vision_simulation;
+
+    document.getElementById('simCameraStatus').textContent = camStatus ? '仿真模式' : '真实模式';
+    document.getElementById('simPlcStatus').textContent = plcStatus ? '仿真模式' : '真实模式';
+    document.getElementById('simVisionStatus').textContent = visStatus ? '仿真模式' : '真实模式';
+
+    document.getElementById('simCamera').checked = camStatus;
+    document.getElementById('simPlc').checked = plcStatus;
+    document.getElementById('simVision').checked = visStatus;
+  }
+
+  /**
+   * 加载仿真状态
+   */
+  function loadSimStatus() {
+    apiGet('/api/v1/simulation/status').then(function(data) {
+      if (data) {
+        appState.simulationStatus = data;
+        refreshSimStatus();
+      }
+    }).catch(function() {});
+  }
+
+  /**
+   * 渲染配置历史
+   */
+  function renderConfigHistory(history) {
+    var tbody = document.getElementById('configHistoryTable');
+    tbody.innerHTML = '';
+    if (!history || history.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" class="empty-state">无数据</td></tr>';
+      return;
+    }
+    history.forEach(function(item) {
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + (item.timestamp || '--') + '</td><td>' + (item.config_type || '--') + '</td><td>' + (item.old_value || '--') + '</td><td>' + (item.new_value || '--') + '</td>';
+      tbody.appendChild(tr);
+    });
+  }
+
+  // 应用仿真设置按钮
+  document.getElementById('applySimulation').addEventListener('click', function() {
+    var payload = {
+      simulation_enabled: true,
+      camera_simulation: document.getElementById('simCamera').checked,
+      plc_simulation: document.getElementById('simPlc').checked,
+      vision_simulation: document.getElementById('simVision').checked
+    };
+    apiPost('/api/v1/simulation/status', payload).then(function() {
+      loadSimStatus();
+      showToast('仿真设置已应用', 'success');
+    }).catch(function() {});
+  });
+
+  // 刷新状态按钮
+  document.getElementById('refreshSimStatus').addEventListener('click', function() {
+    loadSimStatus();
+  });
+
+  // 加载配置历史按钮
+  document.getElementById('loadConfigHistory').addEventListener('click', function() {
+    apiGet('/api/v1/data/config/history').then(function(data) {
+      if (data && data.history) {
+        renderConfigHistory(data.history);
+        showToast('配置历史已加载', 'success');
+      }
+    }).catch(function() {});
+  });
+
+  // 初始加载状态
+  loadSimStatus();
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   initNavigation();
   initSliders();
@@ -1432,6 +1523,7 @@ document.addEventListener('DOMContentLoaded', function() {
   init3dScanner();
   initCameraConfig();
   initPlcConfig();
+  initSimulation();
 
   addLog('System initialized', 'info');
 

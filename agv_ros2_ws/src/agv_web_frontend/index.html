@@ -71,6 +71,12 @@
           </a>
         </div>
         <div class="nav-section">
+          <div class="nav-section-title">开发</div>
+          <a class="nav-item" data-page="simulation">
+            <span>🧪</span> 仿真测试
+          </a>
+        </div>
+        <div class="nav-section">
           <div class="nav-section-title">系统</div>
           <a class="nav-item" data-page="settings">
             <span>⚡</span> 系统设置
@@ -979,6 +985,78 @@
               <button class="btn btn-warning" id="restartSystem">🔄 重启系统</button>
               <button class="btn btn-danger" id="shutdownSystem">⏻ 关闭系统</button>
             </div>
+          </div>
+        </div>
+
+        <div class="page" id="page-simulation">
+          <div class="page-header">
+            <h2>仿真测试</h2>
+          </div>
+
+          <div class="card-grid cols-2">
+            <div class="card">
+              <div class="card-header">🧪 仿真模式</div>
+              <div class="form-group">
+                <label>摄像头仿真</label>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="simCamera">
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="form-group">
+                <label>PLC仿真</label>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="simPlc">
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="form-group">
+                <label>视觉识别仿真</label>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="simVision">
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <button class="btn btn-primary btn-block" id="applySimulation">✅ 应用仿真设置</button>
+            </div>
+            <div class="card">
+              <div class="card-header">📊 仿真状态</div>
+              <div id="simStatus">
+                <div class="pos-item">
+                  <span class="pos-label">摄像头模式</span>
+                  <span class="pos-value" id="simCameraStatus">--</span>
+                </div>
+                <div class="pos-item">
+                  <span class="pos-label">PLC模式</span>
+                  <span class="pos-value" id="simPlcStatus">--</span>
+                </div>
+                <div class="pos-item">
+                  <span class="pos-label">视觉识别模式</span>
+                  <span class="pos-value" id="simVisionStatus">--</span>
+                </div>
+              </div>
+              <button class="btn btn-secondary btn-block" id="refreshSimStatus" style="margin-top:12px;">🔄 刷新状态</button>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top: 16px;">
+            <div class="card-header">📋 配置历史</div>
+            <div class="table-wrapper">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>时间</th>
+                    <th>类型</th>
+                    <th>旧值</th>
+                    <th>新值</th>
+                  </tr>
+                </thead>
+                <tbody id="configHistoryTable">
+                  <tr><td colspan="4" class="empty-state">无数据</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <button class="btn btn-secondary" id="loadConfigHistory" style="margin-top:12px;">📥 加载历史</button>
           </div>
         </div>
       </main>

@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from rclpy.node import Node
 
 from agv_web_server.ros_bridge import RosBridge
-from agv_web_server.api_routes import create_api_router, camera_mgr, plc_mgr
+from agv_web_server.api_routes import create_api_router, camera_mgr, plc_mgr, db_mgr
 from agv_web_server.websocket_handler import register_websocket
 
 
@@ -80,6 +80,18 @@ class WebServerNode(Node):
             self.get_logger().info('PLC manager started')
         except Exception as e:
             self.get_logger().error(f'Failed to start PLC manager: {e}')
+
+        # 从数据库加载仿真状态
+        try:
+            sim_status = db_mgr.get_simulation_state()
+            if sim_status.get('camera_simulation'):
+                camera_mgr.set_simulation(True)
+                self.get_logger().info('Camera simulation enabled')
+            if sim_status.get('plc_simulation'):
+                plc_mgr.set_simulation(True)
+                self.get_logger().info('PLC simulation enabled')
+        except Exception as e:
+            self.get_logger().error(f'Failed to load simulation status: {e}')
 
         # 在后台线程中启动 Uvicorn 服务器
         self._server_thread = threading.Thread(target=self._run_server, daemon=True)

@@ -3,12 +3,14 @@
 PLC管理模块
 
 提供PLC设备的连接、读写和状态管理功能，
-支持Modbus TCP协议，支持多设备配置。
+支持Modbus TCP协议，支持多设备配置，支持仿真模式。
 """
 
 import threading
 import time
+import random
 from agv_web_server.config_manager import ConfigManager
+from agv_web_server.database_manager import DatabaseManager
 
 # 尝试导入pymodbus库
 try:
@@ -25,7 +27,7 @@ class PlcDevice:
     """
     PLC设备类
     
-    表示一个单独的PLC设备，负责管理该设备的连接和数据读写。
+    表示一个单独的PLC设备，负责管理该设备的连接和数据读写，支持仿真模式。
     """
 
     def __init__(self, config):
@@ -64,14 +66,26 @@ class PlcDevice:
         self.registers = []
         # 线程安全锁
         self.lock = threading.Lock()
+        # 仿真模式计数器
+        self._simulation_counter = 0
 
-    def connect(self):
+    def connect(self, simulation_mode=False):
         """
         连接到PLC设备
         
+        Args:
+            simulation_mode: 是否为仿真模式
+            
         Returns:
             bool: 是否成功连接
         """
+        if simulation_mode:
+            self.connected = True
+            # 初始化仿真数据
+            self._init_simulation_data()
+            print(f'[PlcManager] PLC {self.name} 仿真连接成功')
+            return True
+            
         # 先断开之前的连接
         if self.client:
             try:
@@ -96,6 +110,11 @@ class PlcDevice:
             print(f'[PlcManager] PLC {self.name} 连接异常: {e}')
             self.connected = False
 
+    def _init_simulation_data(self):
+        """初始化仿真数据"""
+        self.coils = [random.choice([True, False]) for _ in range(self.coil_read_count)]
+        self.registers = [random.randint(0, 1000) for _ in range(self.register_read_count)]
+
     def disconnect(self):
         """
         断开PLC设备连接
@@ -107,13 +126,25 @@ class PlcDevice:
                 pass
         self.connected = False
 
-    def read_coils(self):
+    def read_coils(self, simulation_mode=False):
         """
         读取PLC线圈状态
         
+        Args:
+            simulation_mode: 是否为仿真模式
+            
         Returns:
             list: 线圈状态列表
         """
+        if simulation_mode:
+            self._simulation_counter += 1
+            # 仿真：随机改变一些线圈状态
+            if self._simulation_counter % 10 == 0:
+                for i in range(len(self.coils)):
+                    if random.random() < 0.1:  # 10%概率翻转
+                        self.coils[i] = not self.coils[i]
+            return self.coils.copy()
+            
         if not self.connected or not self.client:
             return []
         try:
@@ -131,13 +162,24 @@ class PlcDevice:
             self.connected = False
         return []
 
-    def read_registers(self):
+    def read_registers(self, simulation_mode=False):
         """
         读取PLC保持寄存器
         
+        Args:
+            simulation_mode: 是否为仿真模式
+            
         Returns:
             list: 寄存器值列表
         """
+        if simulation_mode:
+            # 仿真：随机改变一些寄存器值
+            for i in range(len(self.registers)):
+                if random.random() < 0.05:  # 5%概率改变
+                    delta = random.randint(-50, 50)
+                    self.registers[i] = max(0, min(65535, self.registers[i] + delta))
+            return self.registers.copy()
+            
         if not self.connected or not self.client:
             return []
         try:
@@ -155,17 +197,25 @@ class PlcDevice:
             self.connected = False
         return []
 
-    def write_coil(self, address, value):
+    def write_coil(self, address, value, simulation_mode=False):
         """
         写入单个线圈
         
         Args:
             address: 线圈地址
             value: 线圈值（True/False）
-        
+            simulation_mode: 是否为仿真模式
+            
         Returns:
             bool: 是否写入成功
         """
+        if simulation_mode:
+            idx = address - self.coil_read_start
+            if 0 <= idx < len(self.coils):
+                self.coils[idx] = bool(value)
+                print(f'[PlcManager] 仿真：写入线圈 {address} = {value}')
+            return True
+            
         if not self.connected or not self.client:
             return False
         try:
@@ -181,17 +231,25 @@ class PlcDevice:
             self.connected = False
         return False
 
-    def write_register(self, address, value):
+    def write_register(self, address, value, simulation_mode=False):
         """
         写入单个保持寄存器
         
         Args:
             address: 寄存器地址
             value: 寄存器值（整数）
-        
+            simulation_mode: 是否为仿真模式
+            
         Returns:
             bool: 是否写入成功
         """
+        if simulation_mode:
+            idx = address - self.register_read_start
+            if 0 <= idx < len(self.registers):
+                self.registers[idx] = int(value)
+                print(f'[PlcManager] 仿真：写入寄存器 {address} = {value}')
+            return True
+            
         if not self.connected or not self.client:
             return False
         try:
@@ -230,7 +288,7 @@ class PlcManager:
     """
     PLC管理器单例类
     
-    负责管理多个PLC设备，定期读取主站数据，并提供统一的控制接口。
+    负责管理多个PLC设备，定期读取主站数据，并提供统一的控制接口，支持仿真模式。
     """
     
     # 单例实例
@@ -255,6 +313,8 @@ class PlcManager:
         if not hasattr(self, '_initialized'):
             # 配置管理器实例
             self.config_mgr = ConfigManager()
+            # 数据库管理器实例
+            self.db_mgr = DatabaseManager()
             # PLC设备列表
             self.devices = []
             # 管理器运行标志
@@ -263,10 +323,42 @@ class PlcManager:
             self._thread = None
             # 线程锁
             self._lock = threading.Lock()
+            # 仿真模式标志
+            self._simulation_enabled = False
             # 加载设备配置
             self._load_devices()
+            # 从数据库加载仿真状态
+            self._load_simulation_state()
             # 初始化完成标志
             self._initialized = True
+            print(f"[PlcManager] 初始化完成，仿真模式: {self._simulation_enabled}")
+
+    def _load_simulation_state(self):
+        """从数据库加载仿真状态"""
+        state = self.db_mgr.get_simulation_state()
+        self._simulation_enabled = state.get('simulation_enabled', False) or state.get('plc_simulation', False)
+
+    def set_simulation(self, enabled: bool):
+        """
+        设置仿真模式
+        
+        Args:
+            enabled: 是否启用仿真模式
+        """
+        self._simulation_enabled = enabled
+        # 更新数据库
+        state = self.db_mgr.get_simulation_state()
+        self.db_mgr.set_simulation_state(
+            simulation_enabled=state.get('simulation_enabled', False),
+            camera_simulation=state.get('camera_simulation', False),
+            plc_simulation=enabled,
+            vision_simulation=state.get('vision_simulation', False)
+        )
+        print(f"[PlcManager] 仿真模式已{'开启' if enabled else '关闭'}")
+
+    def get_simulation(self) -> bool:
+        """获取仿真模式状态"""
+        return self._simulation_enabled
 
     def _load_devices(self):
         """
@@ -310,11 +402,11 @@ class PlcManager:
                     if dev.is_master:
                         # 如果是主站且未连接，尝试连接
                         if not dev.connected:
-                            dev.connect()
+                            dev.connect(simulation_mode=self._simulation_enabled)
                         # 如果已连接，定期读取数据
                         if dev.connected:
-                            dev.read_coils()
-                            dev.read_registers()
+                            dev.read_coils(simulation_mode=self._simulation_enabled)
+                            dev.read_registers(simulation_mode=self._simulation_enabled)
             # 间隔500毫秒
             time.sleep(0.5)
 
@@ -336,8 +428,11 @@ class PlcManager:
             device_configs: 新的设备配置列表
         """
         with self._lock:
+            old_configs = self.config_mgr.get('plc.devices', [])
             # 更新配置
             self.config_mgr.set('plc.devices', device_configs)
+            # 记录配置变更到数据库
+            self.db_mgr.record_config_change('plc', old_configs, device_configs, 'web')
             # 重新加载设备
             self._load_devices()
 
@@ -363,9 +458,9 @@ class PlcManager:
                         # 寄存器0: linear_x * 1000
                         # 寄存器1: linear_y * 1000
                         # 寄存器2: angular_z * 1000）
-                        dev.write_register(0, int(linear_x * 1000))
-                        dev.write_register(1, int(linear_y * 1000))
-                        dev.write_register(2, int(angular_z * 1000))
+                        dev.write_register(0, int(linear_x * 1000), simulation_mode=self._simulation_enabled)
+                        dev.write_register(1, int(linear_y * 1000), simulation_mode=self._simulation_enabled)
+                        dev.write_register(2, int(angular_z * 1000), simulation_mode=self._simulation_enabled)
                     except Exception:
                         pass
         print(f'[PlcManager] 发送从站命令: x={linear_x}, y={linear_y}, ang={angular_z}')

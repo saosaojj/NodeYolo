@@ -62,6 +62,15 @@
           </a>
         </div>
         <div class="nav-section">
+          <div class="nav-section-title">配置</div>
+          <a class="nav-item" data-page="config-camera">
+            <span>📷</span> 摄像头配置
+          </a>
+          <a class="nav-item" data-page="config-plc">
+            <span>🔧</span> PLC配置
+          </a>
+        </div>
+        <div class="nav-section">
           <div class="nav-section-title">系统</div>
           <a class="nav-item" data-page="settings">
             <span>⚡</span> 系统设置
@@ -723,6 +732,159 @@
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <div class="page" id="page-config-camera">
+          <div class="page-header">
+            <h2>摄像头配置</h2>
+            <div class="page-header-actions">
+              <button class="btn btn-secondary" id="loadCameraConfig">📥 加载</button>
+              <button class="btn btn-primary" id="saveCameraConfig">📤 保存</button>
+            </div>
+          </div>
+
+          <div class="card-grid cols-2">
+            <div class="card">
+              <div class="card-header">📷 基本参数</div>
+              <div class="form-group">
+                <label>摄像头设备索引 / RTSP地址</label>
+                <input type="text" class="input-field" id="cameraDevice" value="0">
+              </div>
+              <div class="form-group">
+                <label>使用 RTSP</label>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="useRtsp">
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="form-group">
+                <label>帧率 (FPS)</label>
+                <input type="number" class="input-field" id="cameraFps" value="30">
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-header">📐 分辨率</div>
+              <div class="form-group">
+                <label>宽度</label>
+                <input type="number" class="input-field" id="cameraWidth" value="640">
+              </div>
+              <div class="form-group">
+                <label>高度</label>
+                <input type="number" class="input-field" id="cameraHeight" value="480">
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top: 16px;">
+            <div class="card-header">🖼️ 摄像头预览</div>
+            <div class="camera-feed" style="height: 300px;">
+              <canvas id="cameraPreview" style="width: 100%; height: 100%;"></canvas>
+              <div class="empty-state" id="cameraPreviewEmpty">等待连接...</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="page" id="page-config-plc">
+          <div class="page-header">
+            <h2>PLC配置</h2>
+            <div class="page-header-actions">
+              <button class="btn btn-secondary" id="loadPlcConfig">📥 加载</button>
+              <button class="btn btn-primary" id="savePlcConfig">📤 保存</button>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom: 16px;">
+            <div class="card-header">🔧 PLC设备列表</div>
+            <div class="btn-group" style="margin-bottom: 12px;">
+              <button class="btn btn-primary" id="addPlcDevice">➕ 添加设备</button>
+              <button class="btn btn-danger" id="removePlcDevice">➖ 删除设备</button>
+            </div>
+            <div class="table-wrapper">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>选择</th>
+                    <th>设备名称</th>
+                    <th>IP地址</th>
+                    <th>端口</th>
+                    <th>站号</th>
+                    <th>主/从</th>
+                    <th>连接状态</th>
+                  </tr>
+                </thead>
+                <tbody id="plcDeviceTable">
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card-grid cols-2" id="plcEditCard" style="display: none;">
+            <div class="card">
+              <div class="card-header">📋 编辑设备</div>
+              <div class="form-group">
+                <label>设备名称</label>
+                <input type="text" class="input-field" id="editPlcName">
+              </div>
+              <div class="form-group">
+                <label>IP 地址</label>
+                <input type="text" class="input-field" id="editPlcIp">
+              </div>
+              <div class="form-group">
+                <label>端口</label>
+                <input type="number" class="input-field" id="editPlcPort" value="502">
+              </div>
+              <div class="form-group">
+                <label>站号 (Slave ID)</label>
+                <input type="number" class="input-field" id="editPlcSlave" value="1">
+              </div>
+              <div class="form-group">
+                <label>主站模式</label>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="editPlcIsMaster" checked>
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-header">📊 寄存器配置</div>
+              <div class="form-group">
+                <label>线圈起始地址</label>
+                <input type="number" class="input-field" id="editCoilStart" value="0">
+              </div>
+              <div class="form-group">
+                <label>线圈数量</label>
+                <input type="number" class="input-field" id="editCoilCount" value="16">
+              </div>
+              <div class="form-group">
+                <label>寄存器起始地址</label>
+                <input type="number" class="input-field" id="editRegisterStart" value="0">
+              </div>
+              <div class="form-group">
+                <label>寄存器数量</label>
+                <input type="number" class="input-field" id="editRegisterCount" value="16">
+              </div>
+              <button class="btn btn-primary" id="updatePlcDevice" style="margin-top: 8px;">✏️ 更新设备</button>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top: 16px;">
+            <div class="card-header">🎮 从站控制 (小车状态)</div>
+            <div class="card-grid cols-3">
+              <div class="form-group">
+                <label>目标速度 X</label>
+                <input type="number" class="input-field" id="slaveSpeedX" step="0.01" value="0">
+              </div>
+              <div class="form-group">
+                <label>目标速度 Y</label>
+                <input type="number" class="input-field" id="slaveSpeedY" step="0.01" value="0">
+              </div>
+              <div class="form-group">
+                <label>目标角速度</label>
+                <input type="number" class="input-field" id="slaveSpeedAng" step="0.01" value="0">
+              </div>
+            </div>
+            <button class="btn btn-primary" id="sendSlaveCommand" style="margin-top: 8px;">📤 发送命令</button>
           </div>
         </div>
 

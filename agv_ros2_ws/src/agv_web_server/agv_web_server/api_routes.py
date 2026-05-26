@@ -13,6 +13,15 @@ from agv_interfaces.action import NavigateTo, Patrol
 from geometry_msgs.msg import Twist
 from std_srvs.srv import Trigger
 
+from agv_web_server.config_manager import ConfigManager
+from agv_web_server.camera_manager import CameraManager
+from agv_web_server.plc_manager import PlcManager
+
+# 初始化管理器
+config_mgr = ConfigManager()
+camera_mgr = CameraManager()
+plc_mgr = PlcManager()
+
 
 class ControlCommand(BaseModel):
     command: str
@@ -638,5 +647,44 @@ def create_api_router(ros_bridge):
         except asyncio.TimeoutError:
             raise HTTPException(status_code=504, detail='Service /generate_scan_map timed out')
         return {'success': response.success, 'message': response.message, 'output_file': response.output_file, 'total_points': response.total_points, 'process_time': response.process_time}
+
+    # 摄像头配置API
+    @router.get('/camera/config')
+    async def get_camera_config():
+        config = config_mgr.get('camera', {})
+        return config
+
+    @router.post('/camera/config')
+    async def set_camera_config(body: dict):
+        config_mgr.set('camera', body)
+        camera_mgr.update_config(body)
+        return {'success': True, 'message': 'Camera config updated'}
+
+    @router.get('/camera/preview')
+    async def get_camera_preview():
+        preview = camera_mgr.get_preview_base64()
+        return {'image': preview}
+
+    # PLC配置API
+    @router.get('/plc/config')
+    async def get_plc_config():
+        devices = config_mgr.get('plc.devices', [])
+        return {'devices': devices}
+
+    @router.post('/plc/config')
+    async def set_plc_config(body: dict):
+        devices = body.get('devices', [])
+        plc_mgr.update_config(devices)
+        return {'success': True, 'message': 'PLC config updated'}
+
+    @router.get('/plc/status')
+    async def get_plc_status_new():
+        devices = plc_mgr.get_devices_status()
+        return {'devices': devices}
+
+    @router.post('/plc/send_slave')
+    async def send_slave_command(body: dict):
+        plc_mgr.send_slave_command(body)
+        return {'success': True, 'message': 'Slave command sent'}
 
     return router

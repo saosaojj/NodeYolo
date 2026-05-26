@@ -1,0 +1,5 @@
+string config_key
+---
+bool success
+string message
+string config_value

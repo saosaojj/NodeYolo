@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from rclpy.node import Node
 from agv_web_server.ros_bridge import RosBridge
-from agv_web_server.api_routes import create_api_router
+from agv_web_server.api_routes import create_api_router, camera_mgr, plc_mgr
 from agv_web_server.websocket_handler import register_websocket
 
 
@@ -42,12 +42,41 @@ class WebServerNode(Node):
 
         register_websocket(self.app, self.ros_bridge)
 
+        # 启动摄像头和PLC管理器
+        try:
+            camera_mgr.start()
+            self.get_logger().info('Camera manager started')
+        except Exception as e:
+            self.get_logger().error(f'Failed to start camera manager: {e}')
+
+        try:
+            plc_mgr.start()
+            self.get_logger().info('PLC manager started')
+        except Exception as e:
+            self.get_logger().error(f'Failed to start PLC manager: {e}')
+
         self._server_thread = threading.Thread(target=self._run_server, daemon=True)
         self._server_thread.start()
 
         self.get_logger().info(
             f'Web server started at http://{self.host}:{self.port}'
         )
+
+    def destroy_node(self):
+        # 停止管理器
+        try:
+            camera_mgr.stop()
+            self.get_logger().info('Camera manager stopped')
+        except Exception as e:
+            self.get_logger().error(f'Failed to stop camera manager: {e}')
+
+        try:
+            plc_mgr.stop()
+            self.get_logger().info('PLC manager stopped')
+        except Exception as e:
+            self.get_logger().error(f'Failed to stop PLC manager: {e}')
+
+        super().destroy_node()
 
     def _run_server(self):
         uvicorn.run(self.app, host=self.host, port=self.port, log_level='info')

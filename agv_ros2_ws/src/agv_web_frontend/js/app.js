@@ -1190,6 +1190,197 @@ function init3dScanner() {
   }, 500));
 }
 
+function initCameraConfig() {
+  appState.cameraConfig = {
+    device: '0',
+    use_rtsp: false,
+    fps: 30,
+    width: 640,
+    height: 480
+  };
+
+  document.getElementById('loadCameraConfig').addEventListener('click', function() {
+    apiGet('/api/v1/camera/config').then(function(data) {
+      if (data) {
+        appState.cameraConfig = data;
+        document.getElementById('cameraDevice').value = data.device;
+        document.getElementById('useRtsp').checked = data.use_rtsp;
+        document.getElementById('cameraFps').value = data.fps;
+        document.getElementById('cameraWidth').value = data.width;
+        document.getElementById('cameraHeight').value = data.height;
+        showToast('摄像头配置加载成功', 'success');
+      }
+    }).catch(function() {});
+  });
+
+  document.getElementById('saveCameraConfig').addEventListener('click', function() {
+    appState.cameraConfig = {
+      device: document.getElementById('cameraDevice').value,
+      use_rtsp: document.getElementById('useRtsp').checked,
+      fps: parseInt(document.getElementById('cameraFps').value),
+      width: parseInt(document.getElementById('cameraWidth').value),
+      height: parseInt(document.getElementById('cameraHeight').value)
+    };
+    apiPost('/api/v1/camera/config', appState.cameraConfig).then(function() {
+      showToast('摄像头配置保存成功', 'success');
+    }).catch(function() {});
+  });
+
+  pollIntervals.push(setInterval(function() {
+    if (document.getElementById('page-config-camera').classList.contains('active')) {
+      apiGet('/api/v1/camera/preview').then(function(data) {
+        if (data && data.image) {
+          drawCameraPreview(data.image);
+        }
+      }).catch(function() {});
+    }
+  }, 300));
+}
+
+function drawCameraPreview(base64Image) {
+  var canvas = document.getElementById('cameraPreview');
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var img = new Image();
+  img.onload = function() {
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    document.getElementById('cameraPreviewEmpty').style.display = 'none';
+  };
+  img.src = 'data:image/jpeg;base64,' + base64Image;
+}
+
+function initPlcConfig() {
+  appState.plcDevices = [];
+  appState.selectedPlcIndex = -1;
+
+  function refreshPlcTable() {
+    var tbody = document.getElementById('plcDeviceTable');
+    tbody.innerHTML = '';
+    for (var i = 0; i < appState.plcDevices.length; i++) {
+      var dev = appState.plcDevices[i];
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td><input type="radio" name="plcSelect" value="' + i + '"' + (i === appState.selectedPlcIndex ? ' checked' : '') + '></td><td>' + (dev.name || 'unknown') + '</td><td>' + (dev.ip || '127.0.0.1') + '</td><td>' + (dev.port || 502) + '</td><td>' + (dev.slave_id || 1) + '</td><td>' + (dev.is_master ? '主站' : '从站') + '</td><td><span class="status-dot ' + (dev.connected ? 'connected' : 'disconnected') + '" style="display:inline-block"></span> ' + (dev.connected ? '已连接' : '未连接') + '</td>';
+      tbody.appendChild(tr);
+    }
+    var radios = document.getElementsByName('plcSelect');
+    for (var i = 0; i < radios.length; i++) {
+      radios[i].addEventListener('change', function(e) {
+        appState.selectedPlcIndex = parseInt(e.target.value);
+        updatePlcEditCard();
+      });
+    }
+  }
+
+  function updatePlcEditCard() {
+    if (appState.selectedPlcIndex >= 0 && appState.selectedPlcIndex < appState.plcDevices.length) {
+      var dev = appState.plcDevices[appState.selectedPlcIndex];
+      document.getElementById('plcEditCard').style.display = 'grid';
+      document.getElementById('editPlcName').value = dev.name || '';
+      document.getElementById('editPlcIp').value = dev.ip || '127.0.0.1';
+      document.getElementById('editPlcPort').value = dev.port || 502;
+      document.getElementById('editPlcSlave').value = dev.slave_id || 1;
+      document.getElementById('editPlcIsMaster').checked = dev.is_master !== false;
+      document.getElementById('editCoilStart').value = dev.coil_read_start || 0;
+      document.getElementById('editCoilCount').value = dev.coil_read_count || 16;
+      document.getElementById('editRegisterStart').value = dev.register_read_start || 0;
+      document.getElementById('editRegisterCount').value = dev.register_read_count || 16;
+    } else {
+      document.getElementById('plcEditCard').style.display = 'none';
+    }
+  }
+
+  document.getElementById('loadPlcConfig').addEventListener('click', function() {
+    apiGet('/api/v1/plc/config').then(function(data) {
+      if (data) {
+        appState.plcDevices = data.devices || [];
+        appState.selectedPlcIndex = -1;
+        refreshPlcTable();
+        updatePlcEditCard();
+        showToast('PLC配置加载成功', 'success');
+      }
+    }).catch(function() {});
+  });
+
+  document.getElementById('savePlcConfig').addEventListener('click', function() {
+    apiPost('/api/v1/plc/config', { devices: appState.plcDevices }).then(function() {
+      showToast('PLC配置保存成功', 'success');
+    }).catch(function() {});
+  });
+
+  document.getElementById('addPlcDevice').addEventListener('click', function() {
+    var newDevice = {
+      name: 'device_' + (appState.plcDevices.length + 1),
+      ip: '192.168.1.' + (100 + appState.plcDevices.length),
+      port: 502,
+      slave_id: 1,
+      coil_read_start: 0,
+      coil_read_count: 16,
+      register_read_start: 0,
+      register_read_count: 16,
+      is_master: true,
+      connected: false
+    };
+    appState.plcDevices.push(newDevice);
+    appState.selectedPlcIndex = appState.plcDevices.length - 1;
+    refreshPlcTable();
+    updatePlcEditCard();
+  });
+
+  document.getElementById('removePlcDevice').addEventListener('click', function() {
+    if (appState.selectedPlcIndex >= 0) {
+      appState.plcDevices.splice(appState.selectedPlcIndex, 1);
+      appState.selectedPlcIndex = -1;
+      refreshPlcTable();
+      updatePlcEditCard();
+      showToast('已删除PLC设备', 'info');
+    }
+  });
+
+  document.getElementById('updatePlcDevice').addEventListener('click', function() {
+    if (appState.selectedPlcIndex >= 0) {
+      var dev = appState.plcDevices[appState.selectedPlcIndex];
+      dev.name = document.getElementById('editPlcName').value;
+      dev.ip = document.getElementById('editPlcIp').value;
+      dev.port = parseInt(document.getElementById('editPlcPort').value);
+      dev.slave_id = parseInt(document.getElementById('editPlcSlave').value);
+      dev.is_master = document.getElementById('editPlcIsMaster').checked;
+      dev.coil_read_start = parseInt(document.getElementById('editCoilStart').value);
+      dev.coil_read_count = parseInt(document.getElementById('editCoilCount').value);
+      dev.register_read_start = parseInt(document.getElementById('editRegisterStart').value);
+      dev.register_read_count = parseInt(document.getElementById('editRegisterCount').value);
+      refreshPlcTable();
+      showToast('设备配置已更新', 'success');
+    }
+  });
+
+  document.getElementById('sendSlaveCommand').addEventListener('click', function() {
+    var cmd = {
+      linear_x: parseFloat(document.getElementById('slaveSpeedX').value),
+      linear_y: parseFloat(document.getElementById('slaveSpeedY').value),
+      angular_z: parseFloat(document.getElementById('slaveSpeedAng').value)
+    };
+    apiPost('/api/v1/plc/send_slave', cmd).then(function() {
+      showToast('从站命令已发送', 'success');
+    }).catch(function() {});
+  });
+
+  pollIntervals.push(setInterval(function() {
+    if (document.getElementById('page-config-plc').classList.contains('active')) {
+      apiGet('/api/v1/plc/status').then(function(data) {
+        if (data && data.devices) {
+          for (var i = 0; i < data.devices.length; i++) {
+            var idx = appState.plcDevices.findIndex(function(d) { return d.name === data.devices[i].name; });
+            if (idx >= 0) {
+              appState.plcDevices[idx].connected = data.devices[i].connected;
+            }
+          }
+          refreshPlcTable();
+        }
+      }).catch(function() {});
+    }
+  }, 1000));
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   initNavigation();
   initSliders();
@@ -1199,6 +1390,8 @@ document.addEventListener('DOMContentLoaded', function() {
   renderRos2Nodes([]);
   initPowerManagement();
   init3dScanner();
+  initCameraConfig();
+  initPlcConfig();
 
   addLog('System initialized', 'info');
 

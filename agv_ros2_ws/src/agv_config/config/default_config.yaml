@@ -1,0 +1,25 @@
+system_name: "AGV Control System"
+version: "0.1.0"
+auto_start: true
+log_level: "INFO"
+
+camera_configs:
+  - camera_id: "main_camera"
+    device_path: "/dev/video0"
+    width: 640
+    height: 480
+    fps: 30
+    format: "bgr8"
+    exposure_mode: "auto"
+    exposure: 0.0
+    gain: 0.0
+    auto_exposure: true
+    enabled: true
+
+plc_configs:
+  - plc_id: "main_plc"
+    ip_address: "192.168.1.100"
+    port: 502
+    slave_id: 1
+    timeout: 5
+    enabled: true

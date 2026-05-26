@@ -1,6 +1,8 @@
 from setuptools import find_packages, setup
+import os
+from glob import glob
 
-package_name = 'agv_vision'
+package_name = 'agv_camera_manager'
 
 setup(
     name=package_name,
@@ -10,21 +12,19 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        ('share/' + package_name + '/launch', ['launch/vision.launch.py', 'launch/training.launch.py']),
-        ('share/' + package_name + '/config', ['config/vision_config.yaml']),
-        ('share/' + package_name + '/models', []),
+        (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
+        (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='agv',
     maintainer_email='agv@todo.todo',
-    description='YOLO object detection with local model inference and self-training capabilities for AGV',
+    description='Unified camera management for AGV',
     license='Apache-2.0',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'yolo_detector_node = agv_vision.yolo_detector_node:main',
-            'yolo_trainer_node = agv_vision.yolo_trainer_node:main',
+            'camera_manager_node = agv_camera_manager.camera_manager_node:main',
         ],
     },
 )

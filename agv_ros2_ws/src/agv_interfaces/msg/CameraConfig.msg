@@ -1,0 +1,11 @@
+string camera_id
+string device_path
+int32 width
+int32 height
+int32 fps
+string format
+string exposure_mode
+float64 exposure
+float64 gain
+bool auto_exposure
+bool enabled

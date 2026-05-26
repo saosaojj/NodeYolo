@@ -7,7 +7,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
 from agv_interfaces.msg import BatteryState
-from agv_interfaces.srv import SetModel
+from agv_interfaces.srv import SetPowerMode
 
 import rclpy
 
@@ -105,7 +105,7 @@ class PowerManagerNode(Node):
 
         # 创建服务：设置功耗模式和获取电源状态
         self.set_power_mode_srv = self.create_service(
-            SetModel, 'set_power_mode', self.set_power_mode_callback)
+            SetPowerMode, 'set_power_mode', self.set_power_mode_callback)
         self.get_power_status_srv = self.create_service(
             Trigger, 'get_power_status', self.get_power_status_callback)
 
@@ -164,7 +164,7 @@ class PowerManagerNode(Node):
 
     # 设置功耗模式服务回调，支持auto/manual/具体模式名
     def set_power_mode_callback(self, request, response):
-        mode = request.model_path.lower()
+        mode = request.mode.lower()
 
         if mode == 'auto':
             self.auto_mode_enabled = True

@@ -1,11 +1,11 @@
 # AGV里程计节点，根据速度指令计算机器人的位姿估计
-# 发布里程计消息、TF变换和AGV状态，支持漂移校正和协方差计算
+# 发布里程计消息和TF变换，支持漂移校正和协方差计算
+# 注意：AGV状态由agv_controller_node统一发布，本节点不再重复发布agv_status
 import math
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist, Quaternion
 from nav_msgs.msg import Odometry
-from agv_interfaces.msg import AGVStatus
 from tf2_ros import TransformBroadcaster
 from geometry_msgs.msg import TransformStamped
 
@@ -64,8 +64,6 @@ class AgvOdometryNode(Node):
 
         # 发布里程计消息
         self.odom_pub = self.create_publisher(Odometry, 'odom', 10)
-        # 发布AGV状态消息
-        self.agv_status_pub = self.create_publisher(AGVStatus, 'agv_status', 10)
 
         # TF广播器，发布odom到base_link的变换
         self.tf_broadcaster = TransformBroadcaster(self)
@@ -170,20 +168,6 @@ class AgvOdometryNode(Node):
         odom.twist.twist.angular.z = self.angular_vel
         odom.twist.covariance = self._compute_twist_covariance(dt)
         self.odom_pub.publish(odom)
-
-        # 构建并发布AGV状态消息
-        status = AGVStatus()
-        status.x = effective_x
-        status.y = effective_y
-        status.theta = effective_theta
-        status.linear_velocity = self.linear_vel
-        status.angular_velocity = self.angular_vel
-        status.battery_level = 100.0
-        status.mode = 'idle'
-        status.emergency_stop = False
-        status.active_alarms = []
-        status.timestamp = current_time.to_msg()
-        self.agv_status_pub.publish(status)
 
     # 将偏航角转换为四元数表示
     @staticmethod

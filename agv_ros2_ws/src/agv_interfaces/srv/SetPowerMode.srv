@@ -1,0 +1,5 @@
+# 设置电源模式请求/响应
+string mode
+---
+bool success
+string message

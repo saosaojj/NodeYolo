@@ -876,9 +876,9 @@ def create_api_router(ros_bridge):
         plc_mgr.update_config(devices)
         return {'success': True, 'message': 'PLC config updated'}
 
-    @router.get('/plc/status')
-    async def get_plc_status_new():
-        """获取 PLC 状态（新管理器方式）"""
+    @router.get('/plc/devices/status')
+    async def get_plc_devices_status():
+        """获取所有 PLC 设备状态（新管理器方式）"""
         devices = plc_mgr.get_devices_status()
         return {'devices': devices}
 

@@ -1406,7 +1406,7 @@ function initPlcConfig() {
   // 轮询更新 PLC 设备连接状态，仅在配置页面激活时执行
   pollIntervals.push(setInterval(function() {
     if (document.getElementById('page-config-plc').classList.contains('active')) {
-      apiGet('/api/v1/plc/status').then(function(data) {
+      apiGet('/api/v1/plc/devices/status').then(function(data) {
         if (data && data.devices) {
           for (var i = 0; i < data.devices.length; i++) {
             var idx = appState.plcDevices.findIndex(function(d) { return d.name === data.devices[i].name; });

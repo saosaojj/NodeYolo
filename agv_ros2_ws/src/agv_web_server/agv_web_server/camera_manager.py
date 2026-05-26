@@ -9,9 +9,18 @@
 import threading
 import time
 import base64
-import cv2
-import numpy as np
 from agv_web_server.config_manager import ConfigManager
+
+# 尝试导入可选依赖
+try:
+    import cv2
+    import numpy as np
+    HAS_CV2 = True
+except ImportError:
+    HAS_CV2 = False
+    cv2 = None
+    np = None
+    print("[CameraManager] Warning: OpenCV not available, camera functionality disabled")
 
 
 class CameraManager:
@@ -60,10 +69,14 @@ class CameraManager:
     def _open_camera(self):
         """
         根据当前配置打开或重新打开摄像头
-        
+
         Returns:
             bool: 是否成功打开摄像头
         """
+        if not HAS_CV2:
+            print('[CameraManager] OpenCV not available, cannot open camera')
+            return False
+
         # 获取摄像头配置
         config = self.config_mgr.get('camera', {})
         device = config.get('device', '0')
@@ -79,7 +92,10 @@ class CameraManager:
             source = device
         else:
             # 使用本地摄像头设备索引
-            source = int(device)
+            try:
+                source = int(device)
+            except ValueError:
+                source = device  # 如果不是数字，还是作为字符串处理
 
         # 释放之前打开的摄像头
         if self.cap:
@@ -139,10 +155,14 @@ class CameraManager:
     def _capture_loop(self):
         """
         视频捕获循环（运行在后台线程）
-        
+
         持续从摄像头读取帧并保存到内存，供其他模块使用
         """
         while self._running:
+            if not HAS_CV2:
+                time.sleep(0.5)
+                continue
+                
             # 确保摄像头已打开且可用
             if self.cap and self.cap.isOpened():
                 ret, frame = self.cap.read()
@@ -161,10 +181,12 @@ class CameraManager:
     def get_frame(self):
         """
         获取最新的视频帧
-        
+
         Returns:
             numpy.ndarray: 最新的视频帧，如果没有可用帧则返回None
         """
+        if not HAS_CV2:
+            return None
         with self._frame_lock:
             if self._frame is not None:
                 return self._frame.copy()
@@ -173,10 +195,13 @@ class CameraManager:
     def get_preview_base64(self):
         """
         获取Base64编码的JPEG预览图
-        
+
         Returns:
             str: Base64编码的JPEG图像，如果没有可用帧则返回None
         """
+        if not HAS_CV2:
+            return None
+            
         frame = self.get_frame()
         if frame is None:
             return None

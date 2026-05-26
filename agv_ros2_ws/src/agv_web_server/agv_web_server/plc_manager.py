@@ -17,6 +17,7 @@ try:
     HAS_PYMODBUS = True
 except ImportError:
     HAS_PYMODBUS = False
+    ModbusTcpClient = None  # 避免 NameError
     print('[PlcManager] pymodbus 未安装，PLC功能不可用')
 
 

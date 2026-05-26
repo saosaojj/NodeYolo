@@ -7,9 +7,12 @@ AGV Web 服务节点
 """
 
 import threading
+import os
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from rclpy.node import Node
 
 from agv_web_server.ros_bridge import RosBridge
@@ -66,6 +69,29 @@ class WebServerNode(Node):
 
         # 注册 WebSocket 处理
         register_websocket(self.app, self.ros_bridge)
+
+        # 挂载静态文件和前端页面
+        if self.static_dir and os.path.isdir(self.static_dir):
+            # 挂载静态文件到 /static
+            self.app.mount(
+                "/static",
+                StaticFiles(directory=self.static_dir),
+                name="static"
+            )
+            self.get_logger().info(f'Static files served from {self.static_dir} at /static')
+
+            # 添加根路径路由，返回 index.html
+            @self.app.get("/")
+            async def get_index():
+                index_path = os.path.join(self.static_dir, "index.html")
+                if os.path.exists(index_path):
+                    return FileResponse(index_path)
+                return {"message": "index.html not found in static_dir"}
+        else:
+            self.get_logger().info(
+                'No static_dir specified or directory does not exist. '
+                'Frontend will not be served by this server.'
+            )
 
         # 启动摄像头管理器
         try:

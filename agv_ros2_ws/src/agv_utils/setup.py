@@ -7,7 +7,6 @@ setup(
     data_files=[
         ('share/ament_index/resource_index/packages',
          ['resource/agv_utils']),
-        ('share/agv_utils', ['package.xml']),
         ('share/agv_utils/launch', ['launch/utils.launch.py']),
     ],
     install_requires=['setuptools'],

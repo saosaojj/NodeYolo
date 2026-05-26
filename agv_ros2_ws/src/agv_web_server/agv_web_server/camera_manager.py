@@ -107,7 +107,7 @@ class CameraManager:
 
     def _generate_simulation_frame(self):
         """
-        生成仿真帧，使用numpy向量化操作提升性能
+        生成仿真帧
         
         Returns:
             numpy.ndarray: 仿真图像
@@ -123,18 +123,18 @@ class CameraManager:
         # 创建一个仿真图像
         self._simulation_frame_count += 1
         
+        # 渐变背景
+        img = np.zeros((height, width, 3), dtype=np.uint8)
+        
         # 添加动画效果
         offset = (self._simulation_frame_count % 100) / 100.0
-
-        # 使用numpy向量化操作生成渐变背景，避免逐像素循环
-        y_coords = np.linspace(0, 1, height).reshape(-1, 1)
-        x_coords = np.linspace(0, 1, width).reshape(1, -1)
-
-        r = ((x_coords + offset) * 127 + 64).astype(np.uint8)
-        g = ((y_coords + 0.5 - offset) * 127 + 64).astype(np.uint8)
-        b = np.full((height, width), int((offset + 0.3) * 127 + 64), dtype=np.uint8)
-
-        img = np.stack([b, g, r], axis=-1)
+        for y in range(height):
+            for x in range(width):
+                # 彩色渐变背景
+                r = int((x / width + offset) * 127 + 64)
+                g = int((y / height + 0.5 - offset) * 127 + 64)
+                b = int((offset + 0.3) * 127 + 64)
+                img[y, x] = [b, g, r]
         
         # 添加一些模拟的检测框
         for i in range(3):

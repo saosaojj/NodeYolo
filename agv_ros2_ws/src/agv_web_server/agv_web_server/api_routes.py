@@ -21,7 +21,7 @@ from agv_interfaces.msg import (
 )
 from agv_interfaces.srv import (
     ControlAGV, ReadPlc, WritePlc, SetIO, TrainModel, 
-    ConnectWiFi, ConnectBluetooth, SetCharging, SetModel, SetPowerMode,
+    ConnectWiFi, ConnectBluetooth, SetCharging, SetModel, 
     GenerateScanMap, StartScan
 )
 from agv_interfaces.action import NavigateTo, Patrol
@@ -766,9 +766,9 @@ def create_api_router(ros_bridge):
     @router.post('/power/mode')
     async def set_power_mode(body: dict):
         """设置电源模式"""
-        mode = body.get('mode', 'balanced')
-        future = ros_bridge.call_service('/set_power_mode', SetPowerMode, {
-            'mode': mode,
+        mode = body.get('model_path', body.get('mode', 'balanced'))
+        future = ros_bridge.call_service('/set_power_mode', SetModel, {
+            'model_path': mode,
         })
         if future is None:
             raise HTTPException(status_code=503, detail='Service /set_power_mode not available')

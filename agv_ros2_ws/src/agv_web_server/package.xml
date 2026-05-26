@@ -19,8 +19,6 @@
   <exec_depend>fastapi</exec_depend>
   <exec_depend>uvicorn</exec_depend>
   <exec_depend>python3-pip</exec_depend>
-  <exec_depend>cv_bridge</exec_depend>
-  <exec_depend>opencv-python</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

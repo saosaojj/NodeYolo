@@ -1,9 +1,5 @@
 #!/bin/bash
 
-WORKSPACE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-
-echo "Stopping all AGV ROS2 processes..."
-
 pkill -SIGINT -f "ros2 launch" 2>/dev/null || true
 pkill -SIGINT -f "ros2 run" 2>/dev/null || true
 

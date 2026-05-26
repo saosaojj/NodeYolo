@@ -13,8 +13,7 @@
   <depend>agv_interfaces</depend>
   <depend>std_msgs</depend>
 
-  <exec_depend>pymodbus</exec_depend>
-  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>python3-pymodbus</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

@@ -17,7 +17,7 @@
   <depend>geometry_msgs</depend>
 
   <exec_depend>ultralytics</exec_depend>
-  <exec_depend>opencv-python</exec_depend>
+  <exec_depend>python3-opencv</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

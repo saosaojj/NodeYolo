@@ -36,7 +36,7 @@ class WebServerNode(Node):
         self.declare_parameter('port', 8080)
         self.declare_parameter('cors_origins', ['*'])
         self.declare_parameter('static_dir', '')
-        self.declare_parameter('jwt_secret', '')
+        self.declare_parameter('jwt_secret', 'agv_secret_key_change_in_production')
 
         # 获取参数值
         self.host = self.get_parameter('host').get_parameter_value().string_value
@@ -44,8 +44,6 @@ class WebServerNode(Node):
         self.cors_origins = self.get_parameter('cors_origins').get_parameter_value().string_array_value
         self.static_dir = self.get_parameter('static_dir').get_parameter_value().string_value
         self.jwt_secret = self.get_parameter('jwt_secret').get_parameter_value().string_value
-        if not self.jwt_secret:
-            self.get_logger().warn('JWT secret is not set! Please configure jwt_secret parameter for production use.')
 
         # 创建 FastAPI 应用
         self.app = FastAPI(title='AGV Web Server', version='1.0.0')

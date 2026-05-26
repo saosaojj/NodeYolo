@@ -38,7 +38,6 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/SetConfig.srv"
   "srv/SaveConfig.srv"
   "srv/LoadConfig.srv"
-  "srv/SetPowerMode.srv"
   "action/NavigateTo.action"
   "action/Patrol.action"
   DEPENDENCIES builtin_interfaces geometry_msgs std_msgs sensor_msgs

@@ -32,12 +32,14 @@ from agv_web_server.config_manager import ConfigManager
 from agv_web_server.camera_manager import CameraManager
 from agv_web_server.plc_manager import PlcManager
 from agv_web_server.database_manager import DatabaseManager
+from agv_web_server.vision_manager import VisionManager
 
 # 初始化管理器单例
 config_mgr = ConfigManager()
 camera_mgr = CameraManager()
 plc_mgr = PlcManager()
 db_mgr = DatabaseManager()
+vision_mgr = VisionManager()
 
 
 class ControlCommand(BaseModel):
@@ -456,26 +458,6 @@ def create_api_router(ros_bridge):
         _set_cached_response('plc_status', result)
         return result
 
-    @router.get('/plc/{device}/read')
-    async def read_plc_by_device(device: str, type: str = 'coil', address: int = 0, quantity: int = 16):
-        """从指定 PLC 设备读取数据（前端兼容方式）"""
-        cached = _get_cached_response(f'plc_{device}_data')
-        if cached is not None:
-            return cached
-        # 使用 PLC 管理器读取数据
-        result = plc_mgr.read_data(device, type, address, quantity)
-        _set_cached_response(f'plc_{device}_data', result)
-        return result
-
-    @router.post('/plc/{device}/write')
-    async def write_plc_by_device(device: str, body: dict):
-        """向指定 PLC 设备写入数据（前端兼容方式）"""
-        plc_type = body.get('type', 'coil')
-        addr = body.get('address', 0)
-        values = body.get('values', [])
-        success = plc_mgr.write_data(device, plc_type, addr, values)
-        return {'success': success, 'message': 'Write operation completed'}
-
     @router.post('/plc/read')
     async def read_plc(body: PlcReadRequest):
         """从 PLC 读取数据"""
@@ -627,24 +609,6 @@ def create_api_router(ros_bridge):
         return {'success': response.success, 'message': response.message}
 
     # ==================== 蓝牙相关 API ====================
-
-    @router.get('/bluetooth/status')
-    async def get_bluetooth_status():
-        """获取蓝牙状态（前端兼容方式）"""
-        cached = _get_cached_response('bluetooth_status')
-        if cached is not None:
-            return cached
-        # 返回蓝牙状态信息
-        result = {
-            'enabled': True,
-            'connected': False,
-            'address': '00:00:00:00:00:00',
-            'name': 'AGV Bluetooth',
-            'rssi': 0,
-            'battery_level': 100
-        }
-        _set_cached_response('bluetooth_status', result)
-        return result
 
     @router.get('/bluetooth/devices')
     async def get_bluetooth_devices():
@@ -1010,5 +974,181 @@ def create_api_router(ros_bridge):
         days = body.get('days', 30)
         count = db_mgr.clear_old_data(days)
         return {'success': True, 'message': f'Cleaned up {count} records', 'count': count}
+
+    # ==================== 视觉管理 API ====================
+
+    @router.get('/vision/info')
+    async def get_vision_info():
+        """获取视觉系统信息"""
+        return vision_mgr.get_model_info()
+
+    @router.post('/vision/load_model')
+    async def load_vision_model(body: dict):
+        """加载YOLO模型"""
+        model_path = body.get('model_path', 'yolov8n.pt')
+        device = body.get('device', None)
+        result = vision_mgr.load_model(model_path, device)
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result.get('error', 'Failed to load model'))
+        return result
+
+    @router.post('/vision/set_confidence')
+    async def set_vision_confidence(body: dict):
+        """设置检测置信度阈值"""
+        confidence = body.get('confidence', 0.5)
+        result = vision_mgr.set_confidence(confidence)
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result.get('error', 'Invalid confidence'))
+        return result
+
+    @router.post('/vision/set_iou')
+    async def set_vision_iou(body: dict):
+        """设置IOU阈值"""
+        threshold = body.get('iou_threshold', 0.45)
+        result = vision_mgr.set_iou_threshold(threshold)
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result.get('error', 'Invalid threshold'))
+        return result
+
+    @router.post('/vision/set_device')
+    async def set_vision_device(body: dict):
+        """设置推理设备"""
+        device = body.get('device', 'cpu')
+        return vision_mgr.set_device(device)
+
+    @router.post('/vision/set_classes_filter')
+    async def set_vision_classes_filter(body: dict):
+        """设置类别过滤"""
+        classes = body.get('classes', [])
+        return vision_mgr.set_classes_filter(classes)
+
+    @router.get('/vision/models')
+    async def get_available_models():
+        """获取可用的YOLO模型列表"""
+        return {'models': vision_mgr.get_available_models()}
+
+    @router.post('/vision/zone/add')
+    async def add_vision_zone(body: dict):
+        """添加监控区域"""
+        zone_name = body.get('name', 'zone_1')
+        points = body.get('points', [])
+        if not points:
+            raise HTTPException(status_code=400, detail='Points are required')
+        result = vision_mgr.add_zone(zone_name, points)
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result.get('error', 'Failed to add zone'))
+        return result
+
+    @router.post('/vision/line_zone/add')
+    async def add_vision_line_zone(body: dict):
+        """添加越线检测线"""
+        line_name = body.get('name', 'line_1')
+        start = body.get('start', [0, 0])
+        end = body.get('end', [100, 100])
+        result = vision_mgr.add_line_zone(line_name, start, end)
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result.get('error', 'Failed to add line zone'))
+        return result
+
+    @router.post('/vision/simulation')
+    async def set_vision_simulation(body: dict):
+        """设置视觉仿真状态"""
+        enabled = body.get('enabled', False)
+        vision_mgr.set_simulation(enabled)
+        status = db_mgr.get_simulation_state()
+        db_mgr.set_simulation_state(
+            status.get('simulation_enabled', False),
+            status.get('camera_simulation', False),
+            status.get('plc_simulation', False),
+            enabled
+        )
+        return {'success': True, 'message': 'Vision simulation updated'}
+
+    # ==================== 模型训练 API ====================
+
+    @router.post('/vision/train')
+    async def train_vision_model(body: dict):
+        """训练YOLO模型"""
+        dataset_path = body.get('dataset_path', '')
+        if not dataset_path:
+            raise HTTPException(status_code=400, detail='dataset_path is required')
+
+        result = vision_mgr.train_model(
+            dataset_path=dataset_path,
+            model_type=body.get('model_type', 'yolov8n'),
+            epochs=body.get('epochs', 100),
+            learning_rate=body.get('learning_rate', 0.01),
+            imgsz=body.get('imgsz', 640),
+            batch_size=body.get('batch_size', 16),
+            augmentation=body.get('augmentation', True),
+            output_path=body.get('output_path', None),
+            fine_tune_from=body.get('fine_tune_from', None),
+        )
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result.get('error', 'Training failed'))
+        return result
+
+    @router.post('/vision/fine_tune')
+    async def fine_tune_vision_model(body: dict):
+        """微调YOLO模型"""
+        dataset_path = body.get('dataset_path', '')
+        base_model_path = body.get('base_model_path', '')
+        if not dataset_path or not base_model_path:
+            raise HTTPException(status_code=400, detail='dataset_path and base_model_path are required')
+
+        result = vision_mgr.fine_tune(
+            dataset_path=dataset_path,
+            base_model_path=base_model_path,
+            epochs=body.get('epochs', 50),
+            learning_rate=body.get('learning_rate', 0.001),
+            imgsz=body.get('imgsz', 640),
+            batch_size=body.get('batch_size', 16),
+            output_path=body.get('output_path', None),
+        )
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result.get('error', 'Fine-tuning failed'))
+        return result
+
+    @router.get('/vision/train/status')
+    async def get_training_status():
+        """获取训练状态"""
+        return vision_mgr.get_training_status()
+
+    @router.post('/vision/train/cancel')
+    async def cancel_training():
+        """取消训练"""
+        return vision_mgr.cancel_training()
+
+    @router.post('/vision/validate')
+    async def validate_vision_model(body: dict):
+        """验证模型性能"""
+        model_path = body.get('model_path', None)
+        data_yaml = body.get('data_yaml', None)
+        result = vision_mgr.validate_model(model_path, data_yaml)
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result.get('error', 'Validation failed'))
+        return result
+
+    @router.post('/vision/export')
+    async def export_vision_model(body: dict):
+        """导出模型"""
+        model_path = body.get('model_path', None)
+        format = body.get('format', 'onnx')
+        result = vision_mgr.export_model(model_path, format)
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result.get('error', 'Export failed'))
+        return result
+
+    @router.post('/vision/dataset/manage')
+    async def manage_dataset(body: dict):
+        """管理数据集"""
+        dataset_path = body.get('dataset_path', '')
+        action = body.get('action', 'info')
+        if not dataset_path and action != 'info':
+            raise HTTPException(status_code=400, detail='dataset_path is required')
+        result = vision_mgr.manage_dataset(dataset_path, action, **body.get('kwargs', {}))
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result.get('error', 'Operation failed'))
+        return result
 
     return router

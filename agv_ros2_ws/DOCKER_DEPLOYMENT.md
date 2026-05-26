@@ -2,6 +2,7 @@
 
 ## 📋 目录
 
+- [快速开始（5分钟部署）](#快速开始5分钟部署)
 - [概述](#概述)
 - [系统要求](#系统要求)
 - [安装Docker](#安装docker)
@@ -13,6 +14,72 @@
 - [常见问题](#常见问题)
 - [故障排除](#故障排除)
 - [安全加固](#安全加固)
+
+---
+
+## 快速开始（5分钟部署）
+
+### 一键部署
+
+如果你已经安装了Docker和Docker Compose，可以直接执行：
+
+```bash
+# 1. 克隆项目
+git clone https://github.com/saosaojj/NodeYolo.git
+cd NodeYolo/agv_ros2_ws
+
+# 2. 赋予脚本执行权限
+chmod +x deploy.sh monitor.sh docker-entrypoint.sh docker-healthcheck.sh
+
+# 3. 构建并部署生产环境（推荐）
+./deploy.sh build
+./deploy.sh deploy-prod
+
+# 4. 查看服务状态
+./deploy.sh status
+
+# 5. 访问Web界面
+# 浏览器打开: http://你的服务器IP:8080
+```
+
+### 验证部署
+
+部署完成后，执行以下检查：
+
+```bash
+# 检查所有服务是否正常运行
+./deploy.sh status
+
+# 执行健康检查
+./deploy.sh health
+
+# 查看实时日志
+docker compose logs -f agv_web
+```
+
+### 开发环境部署
+
+如果你想在本地开发，可以使用开发环境：
+
+```bash
+# 部署开发环境
+./deploy.sh deploy-dev
+
+# 进入容器进行开发
+docker exec -it agv_dev bash
+```
+
+### 测试环境部署
+
+用于快速测试功能，端口使用8082：
+
+```bash
+# 部署测试环境
+./deploy.sh deploy-test
+
+# 访问测试界面
+# 浏览器打开: http://localhost:8082
+```
 
 ---
 
@@ -428,9 +495,211 @@ tar -xzf agv_backup_20240101_120000.tar.gz
 
 ---
 
-## 7. 服务管理
+## 7. 仿真功能使用
 
-### 7.1 服务状态检查
+### 7.1 仿真模式介绍
+
+系统提供完整的仿真功能，无需真实硬件即可测试所有功能：
+
+- **摄像头仿真**：生成彩色渐变测试图像
+- **PLC仿真**：模拟线圈和寄存器状态变化
+- **视觉识别仿真**：生成模拟检测结果
+- **数据记录**：所有操作记录到SQLite数据库
+
+### 7.2 启用/禁用仿真
+
+#### 通过环境变量配置
+
+```bash
+# 编辑 .env 文件
+ENABLE_SIMULATION=true  # 启用仿真（默认）
+ENABLE_SIMULATION=false # 禁用仿真（使用真实硬件）
+```
+
+#### 通过Web界面控制
+
+1. 访问Web界面：`http://localhost:8080`
+2. 进入"仿真测试"页面
+3. 切换各模块的仿真开关
+4. 状态自动保存到数据库
+
+#### 通过API控制
+
+```bash
+# 获取当前仿真状态
+curl http://localhost:8080/api/v1/simulation/status
+
+# 启用所有仿真
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"camera": true, "plc": true, "vision": true}' \
+  http://localhost:8080/api/v1/simulation/status
+
+# 仅启用摄像头仿真
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"enabled": true}' \
+  http://localhost:8080/api/v1/simulation/camera
+
+# 仅启用PLC仿真
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"enabled": true}' \
+  http://localhost:8080/api/v1/simulation/plc
+```
+
+### 7.3 仿真数据查看
+
+#### 查看配置历史
+
+```bash
+# 进入容器
+docker exec -it agv_web bash
+
+# 连接数据库
+sqlite3 /root/.agv_web_config/agv_data.db
+
+# 查询配置变更历史
+sqlite> SELECT * FROM config_history ORDER BY timestamp DESC LIMIT 20;
+
+# 查询AGV状态历史
+sqlite> SELECT * FROM agv_status_history ORDER BY timestamp DESC LIMIT 20;
+
+# 查询PLC数据历史
+sqlite> SELECT * FROM plc_data_history ORDER BY timestamp DESC LIMIT 20;
+
+# 查询仿真状态
+sqlite> SELECT * FROM simulation_state;
+```
+
+#### 通过API查看历史数据
+
+```bash
+# 查看配置历史
+curl http://localhost:8080/api/v1/data/config/history
+
+# 查看AGV状态历史
+curl http://localhost:8080/api/v1/data/agv/history
+
+# 清理过期数据
+curl -X POST http://localhost:8080/api/v1/data/cleanup
+```
+
+### 7.4 仿真模式下的开发流程
+
+```bash
+# 1. 启动开发环境
+./deploy.sh deploy-dev
+
+# 2. 进入开发容器
+docker exec -it agv_dev bash
+
+# 3. 启用仿真（默认已启用）
+# 在Web界面的仿真测试页面控制各模块
+
+# 4. 测试各功能
+# - 摄像头：查看视频流页面
+# - PLC：查看PLC设备页面
+# - AGV控制：使用遥控或导航功能
+```
+
+---
+
+## 8. API接口说明
+
+### 8.1 基础API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/` | 主页 |
+| GET | `/docs` | API文档（Swagger） |
+| GET | `/api/v1/system/health` | 健康检查 |
+
+### 8.2 AGV控制API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/v1/agv/status` | 获取AGV状态 |
+| POST | `/api/v1/agv/cmd_vel` | 速度控制 |
+| POST | `/api/v1/agv/navigate` | 导航到目标点 |
+| POST | `/api/v1/agv/patrol` | 巡逻任务 |
+| POST | `/api/v1/agv/control` | AGV控制命令 |
+
+### 8.3 PLC通信API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/v1/plc/status` | 获取PLC状态 |
+| GET | `/api/v1/plc/devices/status` | 获取设备状态 |
+| GET | `/api/v1/plc/{device}/read` | 读取PLC数据 |
+| POST | `/api/v1/plc/{device}/write` | 写入PLC数据 |
+| POST | `/api/v1/plc/read` | 读取PLC（ROS2服务） |
+| POST | `/api/v1/plc/write` | 写入PLC（ROS2服务） |
+
+### 8.4 IO控制API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/v1/io/states` | 获取IO状态 |
+| POST | `/api/v1/io/set` | 设置IO状态 |
+
+### 8.5 视觉识别API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/v1/vision/detections` | 获取检测结果 |
+| POST | `/api/v1/vision/train` | 训练模型 |
+
+### 8.6 网络连接API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/v1/wifi/status` | WiFi状态 |
+| POST | `/api/v1/wifi/connect` | 连接WiFi |
+| POST | `/api/v1/wifi/scan` | 扫描WiFi |
+| GET | `/api/v1/bluetooth/status` | 蓝牙状态 |
+| GET | `/api/v1/bluetooth/devices` | 蓝牙设备列表 |
+| POST | `/api/v1/bluetooth/connect` | 连接蓝牙 |
+
+### 8.7 仿真控制API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/v1/simulation/status` | 获取仿真状态 |
+| POST | `/api/v1/simulation/status` | 设置仿真状态 |
+| POST | `/api/v1/simulation/camera` | 启用/禁用摄像头仿真 |
+| POST | `/api/v1/simulation/plc` | 启用/禁用PLC仿真 |
+
+### 8.8 数据查询API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/v1/data/config/history` | 配置历史记录 |
+| GET | `/api/v1/data/agv/history` | AGV状态历史 |
+| POST | `/api/v1/data/cleanup` | 清理过期数据 |
+
+### 8.9 API使用示例
+
+```bash
+# 启动仿真模式
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"camera": true, "plc": true, "vision": true}' \
+  http://localhost:8080/api/v1/simulation/status
+
+# 读取PLC数据
+curl "http://localhost:8080/api/v1/plc/main_plc/read?type=coil&address=0&quantity=16"
+
+# 写入PLC数据
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"type": "coil", "address": 0, "values": [true, false, true]}' \
+  http://localhost:8080/api/v1/plc/main_plc/write
+
+# 获取AGV状态
+curl http://localhost:8080/api/v1/agv/status
+```
+
+---
+
+## 9. 服务管理
+
+### 9.1 服务状态检查
 
 ```bash
 # 方式1：使用部署脚本
@@ -459,7 +728,23 @@ docker-compose restart agv_web
 docker-compose logs -f agv_core
 ```
 
-### 7.3 进入容器调试
+### 9.2 启动和停止服务
+
+```bash
+# 启动所有服务
+docker-compose up -d
+
+# 停止所有服务
+docker-compose down
+
+# 重启特定服务
+docker-compose restart agv_web
+
+# 查看服务日志
+docker-compose logs -f agv_core
+```
+
+### 9.3 进入容器调试
 
 ```bash
 # 进入核心服务容器
@@ -477,7 +762,7 @@ ros2 node list
 ros2 topic list
 ```
 
-### 7.4 使用入口脚本命令
+### 9.4 使用入口脚本命令
 
 ```bash
 # 进入容器后使用
@@ -492,9 +777,9 @@ docker exec -it agv_core /docker-entrypoint.sh launch_web
 
 ---
 
-## 8. 监控和维护
+## 10. 监控和维护
 
-### 8.1 使用监控脚本
+### 10.1 使用监控脚本
 
 ```bash
 # 单次检查
@@ -514,7 +799,7 @@ docker exec -it agv_core /docker-entrypoint.sh launch_web
 - Web服务响应
 - ROS2节点数量
 
-### 8.2 日志管理
+### 10.2 日志管理
 
 ```bash
 # 查看所有服务的日志
@@ -536,7 +821,7 @@ docker-compose logs > agv_logs_$(date +%Y%m%d_%H%M%S).txt
 docker logs --details agv_core
 ```
 
-### 8.3 性能监控
+### 10.3 性能监控
 
 ```bash
 # 查看Docker资源使用
@@ -549,7 +834,7 @@ docker stats agv_core agv_web
 docker exec -it agv_core htop
 ```
 
-### 8.4 定期维护任务
+### 10.4 定期维护任务
 
 建议设置定期维护：
 
@@ -566,9 +851,9 @@ tar -czf backup_$(date +%Y%m%d).tar.gz volumes/
 
 ---
 
-## 9. 常见问题
+## 11. 常见问题
 
-### 9.1 端口被占用
+### 11.1 端口被占用
 
 **问题**：启动服务时提示端口被占用
 
@@ -589,7 +874,7 @@ docker-compose -f docker-compose.test.yml up -d
 # 测试环境使用8082端口
 ```
 
-### 9.2 权限问题
+### 11.2 权限问题
 
 **问题**：容器无法访问设备或文件
 
@@ -608,7 +893,7 @@ ls -la volumes/
 chmod -R 755 volumes/
 ```
 
-### 9.3 镜像构建失败
+### 11.3 镜像构建失败
 
 **问题**：Docker构建过程中出错
 
@@ -625,7 +910,7 @@ docker run -it agv_ros2:builder bash
 # 在容器内手动执行构建步骤
 ```
 
-### 9.4 容器无法启动
+### 11.4 容器无法启动
 
 **问题**：容器启动后立即停止
 
@@ -641,7 +926,7 @@ docker run -it --rm agv_ros2:full bash
 # 在容器内检查问题
 ```
 
-### 9.5 ROS2节点无法通信
+### 11.5 ROS2节点无法通信
 
 **问题**：ROS2节点无法相互发现
 
@@ -664,9 +949,9 @@ ros2 node list
 
 ---
 
-## 10. 故障排除
+## 12. 故障排除
 
-### 10.1 诊断脚本
+### 12.1 诊断脚本
 
 创建诊断脚本：
 
@@ -698,7 +983,7 @@ df -h
 echo ""
 ```
 
-### 10.2 重置系统
+### 12.2 重置系统
 
 如果系统出现严重问题：
 
@@ -722,7 +1007,7 @@ tar -xzf backup_before_reset.tar.gz
 docker-compose up -d
 ```
 
-### 10.3 常见错误代码
+### 12.3 常见错误代码
 
 | 错误代码 | 可能原因 | 解决方案 |
 |---------|---------|---------|
@@ -732,9 +1017,9 @@ docker-compose up -d
 
 ---
 
-## 11. 安全加固
+## 13. 安全加固
 
-### 11.1 基本安全措施
+### 13.1 基本安全措施
 
 1. **修改默认密钥**
 
@@ -769,7 +1054,7 @@ sudo apt-get update && sudo apt-get upgrade -y
 docker-compose up -d --build
 ```
 
-### 11.2 Docker安全最佳实践
+### 13.2 Docker安全最佳实践
 
 ```bash
 # 不要以root用户运行容器（生产环境）
@@ -788,7 +1073,7 @@ tmpfs:
   - /var/run
 ```
 
-### 11.3 监控安全事件
+### 13.3 监控安全事件
 
 ```bash
 # 查看认证日志
@@ -803,9 +1088,9 @@ docker exec -it agv_core netstat -tulpn
 
 ---
 
-## 12. 高级配置
+## 14. 高级配置
 
-### 12.1 使用HTTPS
+### 14.1 使用HTTPS
 
 ```bash
 # 使用Let's Encrypt证书
@@ -818,7 +1103,7 @@ sudo certbot certonly --standalone -d your-domain.com
 # 3. 更新docker-compose.yml配置Web服务器使用HTTPS
 ```
 
-### 12.2 配置反向代理
+### 14.2 配置反向代理
 
 使用Nginx作为反向代理：
 
@@ -843,7 +1128,7 @@ server {
 }
 ```
 
-### 12.3 日志轮转
+### 14.3 日志轮转
 
 配置日志轮转：
 

@@ -456,6 +456,26 @@ def create_api_router(ros_bridge):
         _set_cached_response('plc_status', result)
         return result
 
+    @router.get('/plc/{device}/read')
+    async def read_plc_by_device(device: str, type: str = 'coil', address: int = 0, quantity: int = 16):
+        """从指定 PLC 设备读取数据（前端兼容方式）"""
+        cached = _get_cached_response(f'plc_{device}_data')
+        if cached is not None:
+            return cached
+        # 使用 PLC 管理器读取数据
+        result = plc_mgr.read_data(device, type, address, quantity)
+        _set_cached_response(f'plc_{device}_data', result)
+        return result
+
+    @router.post('/plc/{device}/write')
+    async def write_plc_by_device(device: str, body: dict):
+        """向指定 PLC 设备写入数据（前端兼容方式）"""
+        plc_type = body.get('type', 'coil')
+        addr = body.get('address', 0)
+        values = body.get('values', [])
+        success = plc_mgr.write_data(device, plc_type, addr, values)
+        return {'success': success, 'message': 'Write operation completed'}
+
     @router.post('/plc/read')
     async def read_plc(body: PlcReadRequest):
         """从 PLC 读取数据"""
@@ -607,6 +627,24 @@ def create_api_router(ros_bridge):
         return {'success': response.success, 'message': response.message}
 
     # ==================== 蓝牙相关 API ====================
+
+    @router.get('/bluetooth/status')
+    async def get_bluetooth_status():
+        """获取蓝牙状态（前端兼容方式）"""
+        cached = _get_cached_response('bluetooth_status')
+        if cached is not None:
+            return cached
+        # 返回蓝牙状态信息
+        result = {
+            'enabled': True,
+            'connected': False,
+            'address': '00:00:00:00:00:00',
+            'name': 'AGV Bluetooth',
+            'rssi': 0,
+            'battery_level': 100
+        }
+        _set_cached_response('bluetooth_status', result)
+        return result
 
     @router.get('/bluetooth/devices')
     async def get_bluetooth_devices():

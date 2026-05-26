@@ -464,3 +464,65 @@ class PlcManager:
                     except Exception:
                         pass
         print(f'[PlcManager] 发送从站命令: x={linear_x}, y={linear_y}, ang={angular_z}')
+
+    def read_data(self, device_name, data_type, start_address, quantity):
+        """
+        从指定设备读取数据（前端兼容接口）
+        
+        Args:
+            device_name: 设备名称
+            data_type: 数据类型（'coil' 或 'register'）
+            start_address: 起始地址
+            quantity: 读取数量
+            
+        Returns:
+            dict: 包含成功状态和数据的字典
+        """
+        with self._lock:
+            for dev in self.devices:
+                if dev.name == device_name:
+                    if data_type.lower() == 'coil':
+                        dev.read_coils(simulation_mode=self._simulation_enabled)
+                        idx = start_address - dev.coil_read_start
+                        end_idx = min(idx + quantity, len(dev.coils))
+                        data = dev.coils[idx:end_idx] if idx >= 0 else []
+                        return {'success': True, 'device': device_name, 'type': 'coil', 
+                                'address': start_address, 'data': data}
+                    elif data_type.lower() == 'register':
+                        dev.read_registers(simulation_mode=self._simulation_enabled)
+                        idx = start_address - dev.register_read_start
+                        end_idx = min(idx + quantity, len(dev.registers))
+                        data = dev.registers[idx:end_idx] if idx >= 0 else []
+                        return {'success': True, 'device': device_name, 'type': 'register', 
+                                'address': start_address, 'data': data}
+                    else:
+                        return {'success': False, 'error': f'Unknown data type: {data_type}'}
+            return {'success': False, 'error': f'Device not found: {device_name}'}
+
+    def write_data(self, device_name, data_type, start_address, values):
+        """
+        向指定设备写入数据（前端兼容接口）
+        
+        Args:
+            device_name: 设备名称
+            data_type: 数据类型（'coil' 或 'register'）
+            start_address: 起始地址
+            values: 要写入的值列表
+            
+        Returns:
+            bool: 是否写入成功
+        """
+        with self._lock:
+            for dev in self.devices:
+                if dev.name == device_name:
+                    success = True
+                    for i, value in enumerate(values):
+                        addr = start_address + i
+                        if data_type.lower() == 'coil':
+                            success &= dev.write_coil(addr, value, simulation_mode=self._simulation_enabled)
+                        elif data_type.lower() == 'register':
+                            success &= dev.write_register(addr, value, simulation_mode=self._simulation_enabled)
+                        else:
+                            return False
+                    return success
+            return False

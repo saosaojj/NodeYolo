@@ -19,7 +19,7 @@ class BatteryMonitorNode(Node):
         super().__init__('battery_monitor')
 
         # 声明轮询参数
-        self.declare_parameter('poll_rate', 1.0)
+        self.declare_parameter('poll_rate', 2.0)
         # 声明电池参数
         self.declare_parameter('battery_capacity_ah', 50.0)
         self.declare_parameter('nominal_voltage', 48.0)

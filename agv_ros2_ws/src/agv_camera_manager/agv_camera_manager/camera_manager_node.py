@@ -19,7 +19,7 @@ class CameraManagerNode(Node):
         self.declare_parameter('device_path', '/dev/video0')
         self.declare_parameter('width', 640)
         self.declare_parameter('height', 480)
-        self.declare_parameter('fps', 30)
+        self.declare_parameter('fps', 15)
         self.declare_parameter('format', 'bgr8')
         self.declare_parameter('exposure_mode', 'auto')
         self.declare_parameter('exposure', 0.0)

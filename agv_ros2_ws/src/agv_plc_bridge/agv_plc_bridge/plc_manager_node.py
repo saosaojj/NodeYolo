@@ -44,7 +44,7 @@ class PlcManagerNode(Node):
 
         # 声明节点参数
         self.declare_parameter('plc_config_file', '')
-        self.declare_parameter('poll_rate_ms', 100)
+        self.declare_parameter('poll_rate_ms', 200)
         self.declare_parameter('default_timeout', 5.0)
         self.declare_parameter('max_retry_backoff', 30.0)
         self.declare_parameter('health_check_interval', 10.0)

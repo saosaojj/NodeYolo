@@ -19,7 +19,7 @@ class WiFiManagerNode(Node):
         super().__init__('wifi_manager_node')
 
         # 声明WiFi管理参数
-        self.declare_parameter('check_rate', 5.0)
+        self.declare_parameter('check_rate', 0.2)
         self.declare_parameter('interface', 'wlan0')
         self.declare_parameter('auto_reconnect', True)
         self.declare_parameter('known_networks', [])

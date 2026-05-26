@@ -19,7 +19,7 @@ class IOControllerNode(Node):
         super().__init__('io_controller_node')
 
         # 声明ROS2参数
-        self.declare_parameter('poll_rate', 100)
+        self.declare_parameter('poll_rate', 200)
         self.declare_parameter('io_config_file', '')
         self.declare_parameter('simulate', True)
         self.declare_parameter('debounce_samples', 3)

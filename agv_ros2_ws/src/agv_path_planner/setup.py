@@ -7,6 +7,7 @@ setup(
     data_files=[
         ('share/ament_index/resource_index/packages',
          ['resource/agv_path_planner']),
+        ('share/agv_path_planner', ['package.xml']),
         ('share/agv_path_planner/launch', ['launch/path_planner.launch.py']),
         ('share/agv_path_planner/config', ['config/planner_config.yaml']),
     ],

@@ -7,6 +7,8 @@
   <maintainer email="todo@todo.com">todo</maintainer>
   <license>Apache-2.0</license>
 
+  <buildtool_depend>ament_python</buildtool_depend>
+
   <depend>rclpy</depend>
   <depend>agv_interfaces</depend>
   <depend>std_msgs</depend>

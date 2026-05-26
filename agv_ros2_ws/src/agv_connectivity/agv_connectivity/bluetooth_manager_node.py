@@ -19,7 +19,7 @@ class BluetoothManagerNode(Node):
         super().__init__('bluetooth_manager_node')
 
         # 声明蓝牙管理参数：扫描频率、适配器名称、是否自动连接已配对设备
-        self.declare_parameter('scan_rate', 10.0)
+        self.declare_parameter('scan_rate', 0.5)
         self.declare_parameter('adapter', 'hci0')
         self.declare_parameter('auto_connect_paired', False)
 

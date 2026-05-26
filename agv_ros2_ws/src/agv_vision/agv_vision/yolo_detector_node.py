@@ -32,7 +32,7 @@ class YoloDetectorNode(Node):
         self.declare_parameter('classes_filter', [])
         self.declare_parameter('frame_skip', 1)
         self.declare_parameter('max_inference_queue', 2)
-        self.declare_parameter('warmup_iterations', 3)
+        self.declare_parameter('warmup_iterations', 1)
 
         # 获取参数值
         model_path = self.get_parameter('model_path').get_parameter_value().string_value

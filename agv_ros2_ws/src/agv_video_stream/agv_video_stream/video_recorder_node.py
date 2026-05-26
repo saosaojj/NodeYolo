@@ -17,6 +17,12 @@ import os
 from datetime import datetime
 from collections import deque
 
+try:
+    from agv_interfaces.msg import YoloResult as YoloResultMsg
+    HAS_YOLO_MSG = True
+except ImportError:
+    HAS_YOLO_MSG = False
+
 
 # 线程安全的循环缓冲区，用于缓存最近的视频帧，支持事件触发录制时回溯
 class CircularBuffer:
@@ -82,7 +88,7 @@ class VideoRecorderNode(Node):
         self.record_thread = None
         self.snapshot_thread = None
         # 帧循环缓冲区，容量为录制时长对应的帧数（按30fps计算）
-        self.frame_buffer = CircularBuffer(int(30 * self.record_duration_sec))
+        self.frame_buffer = CircularBuffer(int(15 * self.record_duration_sec))
 
         self.recording_writer = None
         self.recording_start_time = None
@@ -101,15 +107,18 @@ class VideoRecorderNode(Node):
         )
 
         # 尝试订阅YOLO检测结果话题，用于事件触发录制
-        try:
-            self.yolo_sub = self.create_subscription(
-                'YoloResult',
-                '/yolo_result',
-                self.yolo_callback,
-                qos_profile_sensor_data
-            )
-        except Exception:
-            self.get_logger().warn('YoloResult topic not available')
+        if HAS_YOLO_MSG:
+            try:
+                self.yolo_sub = self.create_subscription(
+                    YoloResultMsg,
+                    '/yolo_result',
+                    self.yolo_callback,
+                    qos_profile_sensor_data
+                )
+            except Exception:
+                self.get_logger().warn('YoloResult topic not available')
+                self.yolo_sub = None
+        else:
             self.yolo_sub = None
 
         # 创建视频控制相关的ROS2服务

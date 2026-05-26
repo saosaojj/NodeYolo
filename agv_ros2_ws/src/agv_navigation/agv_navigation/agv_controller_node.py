@@ -23,7 +23,7 @@ class AgvControllerNode(Node):
         self.declare_parameter('kp_angular', 2.0)
         self.declare_parameter('kd_linear', 0.1)
         self.declare_parameter('kd_angular', 0.3)
-        self.declare_parameter('control_rate', 50.0)
+        self.declare_parameter('control_rate', 20.0)
         self.declare_parameter('max_acceleration', 2.0)
         self.declare_parameter('max_jerk', 10.0)
         self.declare_parameter('cmd_vel_timeout', 1.0)

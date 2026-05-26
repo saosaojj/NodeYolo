@@ -7,12 +7,14 @@
   <maintainer email="agv@todo.todo">agv</maintainer>
   <license>Apache-2.0</license>
 
+  <buildtool_depend>ament_python</buildtool_depend>
+
   <depend>rclpy</depend>
   <depend>agv_interfaces</depend>
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
   <depend>geometry_msgs</depend>
-  <depend>sensor_msgs_py</depend>
+  <exec_depend>sensor_msgs_py</exec_depend>
 
   <exec_depend>numpy</exec_depend>
   <exec_depend>open3d</exec_depend>

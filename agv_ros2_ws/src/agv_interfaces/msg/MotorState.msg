@@ -1,0 +1,10 @@
+float64 left_wheel_speed
+float64 right_wheel_speed
+float64 steering_angle
+float64 target_speed
+float64 target_steering_angle
+float64 left_motor_current
+float64 right_motor_current
+string mode
+bool brake_active
+builtin_interfaces/Time timestamp

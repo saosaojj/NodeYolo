@@ -30,6 +30,9 @@
           <a class="nav-item" data-page="navigation">
             <span>🗺️</span> 导航控制
           </a>
+          <a class="nav-item" data-page="remote-control">
+            <span>🎮</span> 远程操控
+          </a>
         </div>
         <div class="nav-section">
           <div class="nav-section-title">设备</div>
@@ -294,6 +297,151 @@
                   <label>角速度 <span class="range-value" id="angularSpeedVal">0.5</span> rad/s</label>
                   <input type="range" id="angularSpeed" min="0" max="2" step="0.1" value="0.5">
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="page" id="page-plc">
+
+        <div class="page" id="page-remote-control">
+          <div class="page-header">
+            <h2>远程操控</h2>
+            <div class="page-header-actions">
+              <button class="btn btn-primary" id="rcModeManual">🎮 手动模式</button>
+              <button class="btn btn-secondary" id="rcModeAuto">🤖 自动模式</button>
+              <button class="btn btn-danger" id="rcEmergencyBrake">⏹ 急停刹车</button>
+            </div>
+          </div>
+
+          <div class="hero-stats">
+            <div class="stat-card">
+              <div class="stat-card-header">
+                <span class="stat-label">当前速度</span>
+                <div class="stat-icon">⚡</div>
+              </div>
+              <div class="stat-value"><span id="rcCurrentSpeed">0.00</span><span class="stat-unit">m/s</span></div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-header">
+                <span class="stat-label">转向角度</span>
+                <div class="stat-icon">🔄</div>
+              </div>
+              <div class="stat-value"><span id="rcCurrentSteering">0.00</span><span class="stat-unit">rad</span></div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-header">
+                <span class="stat-label">左轮速度</span>
+                <div class="stat-icon">🛞</div>
+              </div>
+              <div class="stat-value"><span id="rcLeftWheel">0.00</span><span class="stat-unit">m/s</span></div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-header">
+                <span class="stat-label">右轮速度</span>
+                <div class="stat-icon">🛞</div>
+              </div>
+              <div class="stat-value"><span id="rcRightWheel">0.00</span><span class="stat-unit">m/s</span></div>
+            </div>
+          </div>
+
+          <div class="card-grid cols-2">
+            <div class="card">
+              <div class="card-header">🎮 虚拟摇杆</div>
+              <div style="display:flex;justify-content:center;align-items:center;padding:20px;">
+                <div id="joystickContainer" style="width:240px;height:240px;position:relative;background:var(--bg-surface,#1a1f2e);border-radius:50%;border:2px solid var(--border,#2d3548);touch-action:none;">
+                  <div id="joystickKnob" style="width:60px;height:60px;position:absolute;top:90px;left:90px;background:var(--primary,#4f8cff);border-radius:50%;cursor:grab;box-shadow:0 0 15px rgba(79,140,255,0.5);"></div>
+                  <div style="position:absolute;top:8px;left:50%;transform:translateX(-50%);color:var(--text-secondary,#8892a4);font-size:12px;">前进</div>
+                  <div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);color:var(--text-secondary,#8892a4);font-size:12px;">后退</div>
+                  <div style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text-secondary,#8892a4);font-size:12px;">左转</div>
+                  <div style="position:absolute;right:8px;top:50%;transform:translateY(-50%);color:var(--text-secondary,#8892a4);font-size:12px;">右转</div>
+                </div>
+              </div>
+              <div style="text-align:center;margin-top:8px;">
+                <span style="color:var(--text-secondary,#8892a4);font-size:12px;">线速度: <span id="rcJoyLinear">0.00</span> m/s | 角速度: <span id="rcJoyAngular">0.00</span> rad/s</span>
+              </div>
+            </div>
+
+            <div>
+              <div class="card" style="margin-bottom:16px;">
+                <div class="card-header">⚡ 速度控制</div>
+                <div class="form-group">
+                  <label>目标速度 <span class="range-value" id="rcSpeedVal">0.0</span> m/s</label>
+                  <input type="range" id="rcSpeedSlider" min="-1.5" max="1.5" step="0.1" value="0">
+                </div>
+                <div class="btn-group" style="margin-top:8px;">
+                  <button class="btn btn-secondary" id="rcSpeedDown" style="flex:1;">➖ 减速</button>
+                  <button class="btn btn-warning" id="rcSpeedStop" style="flex:1;">⏹ 停车</button>
+                  <button class="btn btn-primary" id="rcSpeedUp" style="flex:1;">➕ 加速</button>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-header">🔄 转向控制</div>
+                <div class="form-group">
+                  <label>转向角度 <span class="range-value" id="rcSteerVal">0.00</span> rad</label>
+                  <input type="range" id="rcSteerSlider" min="-0.7854" max="0.7854" step="0.01" value="0">
+                </div>
+                <div class="btn-group" style="margin-top:8px;">
+                  <button class="btn btn-secondary" id="rcSteerLeft" style="flex:1;">◀ 左转</button>
+                  <button class="btn btn-warning" id="rcSteerCenter" style="flex:1;">⏹ 回正</button>
+                  <button class="btn btn-primary" id="rcSteerRight" style="flex:1;">▶ 右转</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:16px;">
+            <div class="card-header">⌨️ 键盘控制</div>
+            <div style="display:flex;justify-content:center;gap:24px;padding:16px;flex-wrap:wrap;">
+              <div style="text-align:center;">
+                <div style="margin-bottom:8px;">
+                  <kbd style="background:var(--bg-surface,#1a1f2e);padding:8px 16px;border-radius:6px;border:1px solid var(--border,#2d3548);font-size:14px;">W</kbd>
+                </div>
+                <div style="display:flex;gap:8px;">
+                  <kbd style="background:var(--bg-surface,#1a1f2e);padding:8px 16px;border-radius:6px;border:1px solid var(--border,#2d3548);font-size:14px;">A</kbd>
+                  <kbd style="background:var(--bg-surface,#1a1f2e);padding:8px 16px;border-radius:6px;border:1px solid var(--border,#2d3548);font-size:14px;">S</kbd>
+                  <kbd style="background:var(--bg-surface,#1a1f2e);padding:8px 16px;border-radius:6px;border:1px solid var(--border,#2d3548);font-size:14px;">D</kbd>
+                </div>
+                <div style="margin-top:8px;color:var(--text-secondary,#8892a4);font-size:12px;">W前进 S后退 A左转 D右转</div>
+              </div>
+              <div style="text-align:center;">
+                <kbd style="background:var(--bg-surface,#1a1f2e);padding:8px 16px;border-radius:6px;border:1px solid var(--border,#2d3548);font-size:14px;">Space</kbd>
+                <div style="margin-top:8px;color:var(--text-secondary,#8892a4);font-size:12px;">紧急停车</div>
+              </div>
+              <div style="text-align:center;">
+                <kbd style="background:var(--bg-surface,#1a1f2e);padding:8px 16px;border-radius:6px;border:1px solid var(--border,#2d3548);font-size:14px;">Q</kbd> / <kbd style="background:var(--bg-surface,#1a1f2e);padding:8px 16px;border-radius:6px;border:1px solid var(--border,#2d3548);font-size:14px;">E</kbd>
+                <div style="margin-top:8px;color:var(--text-secondary,#8892a4);font-size:12px;">速度增减</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:16px;">
+            <div class="card-header">📊 电机状态监控</div>
+            <div class="card-grid cols-3">
+              <div class="pos-item">
+                <span class="pos-label">运行模式</span>
+                <span class="pos-value" id="rcMotorMode">--</span>
+              </div>
+              <div class="pos-item">
+                <span class="pos-label">刹车状态</span>
+                <span class="pos-value" id="rcBrakeActive">--</span>
+              </div>
+              <div class="pos-item">
+                <span class="pos-label">左电机电流</span>
+                <span class="pos-value" id="rcLeftCurrent">-- A</span>
+              </div>
+              <div class="pos-item">
+                <span class="pos-label">右电机电流</span>
+                <span class="pos-value" id="rcRightCurrent">-- A</span>
+              </div>
+              <div class="pos-item">
+                <span class="pos-label">目标速度</span>
+                <span class="pos-value" id="rcTargetSpeed">-- m/s</span>
+              </div>
+              <div class="pos-item">
+                <span class="pos-label">目标转向</span>
+                <span class="pos-value" id="rcTargetSteering">-- rad</span>
               </div>
             </div>
           </div>

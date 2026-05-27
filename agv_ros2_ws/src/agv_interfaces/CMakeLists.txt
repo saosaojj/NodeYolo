@@ -22,6 +22,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/CameraConfig.msg"
   "msg/PlcConfig.msg"
   "msg/SystemConfig.msg"
+  "msg/MotorState.msg"
+  "msg/DriveCommand.msg"
   "srv/ReadPlc.srv"
   "srv/WritePlc.srv"
   "srv/SetIO.srv"
@@ -38,6 +40,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/SetConfig.srv"
   "srv/SaveConfig.srv"
   "srv/LoadConfig.srv"
+  "srv/SetSpeed.srv"
+  "srv/SetSteering.srv"
   "action/NavigateTo.action"
   "action/Patrol.action"
   DEPENDENCIES builtin_interfaces geometry_msgs std_msgs sensor_msgs

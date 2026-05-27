@@ -1727,6 +1727,368 @@ function initVisionTrain() {
   loadAvailableModels();
 }
 
+function initRemoteControl() {
+  var rcState = {
+    linear_x: 0,
+    angular_z: 0,
+    speed: 0,
+    steering: 0,
+    joyDragging: false,
+    lastJoySend: 0
+  };
+
+  var MAX_LINEAR = 1.5;
+  var MAX_ANGULAR = 1.5;
+  var JOY_THROTTLE_MS = 100;
+
+  var container = document.getElementById('joystickContainer');
+  var knob = document.getElementById('joystickKnob');
+
+  if (container && knob) {
+    function getJoyCenter() {
+      var rect = container.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, radius: rect.width / 2 };
+    }
+
+    function updateKnob(clientX, clientY) {
+      var center = getJoyCenter();
+      var dx = clientX - center.x;
+      var dy = clientY - center.y;
+      var dist = Math.sqrt(dx * dx + dy * dy);
+      var maxDist = center.radius - knob.offsetWidth / 2;
+      if (maxDist <= 0) maxDist = 1;
+
+      if (dist > maxDist) {
+        dx = dx / dist * maxDist;
+        dy = dy / dist * maxDist;
+      }
+
+      knob.style.left = (center.radius + dx - knob.offsetWidth / 2) + 'px';
+      knob.style.top = (center.radius + dy - knob.offsetHeight / 2) + 'px';
+
+      var normX = dx / maxDist;
+      var normY = -dy / maxDist;
+
+      rcState.angular_z = parseFloat((normX * MAX_ANGULAR).toFixed(3));
+      rcState.linear_x = parseFloat((normY * MAX_LINEAR).toFixed(3));
+
+      var joyLinearEl = document.getElementById('rcJoyLinear');
+      var joyAngularEl = document.getElementById('rcJoyAngular');
+      if (joyLinearEl) joyLinearEl.textContent = rcState.linear_x.toFixed(2);
+      if (joyAngularEl) joyAngularEl.textContent = rcState.angular_z.toFixed(2);
+
+      sendJoystickCommand();
+    }
+
+    function resetKnob() {
+      knob.style.left = '50%';
+      knob.style.top = '50%';
+      knob.style.transform = 'translate(-50%, -50%)';
+      rcState.linear_x = 0;
+      rcState.angular_z = 0;
+
+      var joyLinearEl = document.getElementById('rcJoyLinear');
+      var joyAngularEl = document.getElementById('rcJoyAngular');
+      if (joyLinearEl) joyLinearEl.textContent = '0.00';
+      if (joyAngularEl) joyAngularEl.textContent = '0.00';
+
+      apiPost('/api/v1/motor/joystick', { linear_x: 0, angular_z: 0 }).catch(function() {});
+    }
+
+    container.addEventListener('mousedown', function(e) {
+      e.preventDefault();
+      rcState.joyDragging = true;
+      knob.style.transform = 'none';
+      updateKnob(e.clientX, e.clientY);
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (rcState.joyDragging) {
+        e.preventDefault();
+        updateKnob(e.clientX, e.clientY);
+      }
+    });
+
+    document.addEventListener('mouseup', function() {
+      if (rcState.joyDragging) {
+        rcState.joyDragging = false;
+        resetKnob();
+      }
+    });
+
+    container.addEventListener('touchstart', function(e) {
+      e.preventDefault();
+      rcState.joyDragging = true;
+      knob.style.transform = 'none';
+      var touch = e.touches[0];
+      updateKnob(touch.clientX, touch.clientY);
+    }, { passive: false });
+
+    document.addEventListener('touchmove', function(e) {
+      if (rcState.joyDragging) {
+        e.preventDefault();
+        var touch = e.touches[0];
+        updateKnob(touch.clientX, touch.clientY);
+      }
+    }, { passive: false });
+
+    document.addEventListener('touchend', function() {
+      if (rcState.joyDragging) {
+        rcState.joyDragging = false;
+        resetKnob();
+      }
+    });
+  }
+
+  function sendJoystickCommand() {
+    var now = Date.now();
+    if (now - rcState.lastJoySend < JOY_THROTTLE_MS) return;
+    rcState.lastJoySend = now;
+    apiPost('/api/v1/motor/joystick', { linear_x: rcState.linear_x, angular_z: rcState.angular_z }).catch(function() {});
+  }
+
+  var speedSlider = document.getElementById('rcSpeedSlider');
+  if (speedSlider) {
+    speedSlider.addEventListener('input', function() {
+      var val = parseFloat(this.value);
+      rcState.speed = val;
+      var display = document.getElementById('rcSpeedVal');
+      if (display) display.textContent = val.toFixed(1);
+      apiPost('/api/v1/motor/speed', { speed: val }).catch(function() {});
+    });
+  }
+
+  var speedUpBtn = document.getElementById('rcSpeedUp');
+  if (speedUpBtn) {
+    speedUpBtn.addEventListener('click', function() {
+      var slider = document.getElementById('rcSpeedSlider');
+      if (!slider) return;
+      var val = Math.min(MAX_LINEAR, parseFloat(slider.value) + 0.1);
+      val = Math.round(val * 10) / 10;
+      slider.value = val;
+      rcState.speed = val;
+      var display = document.getElementById('rcSpeedVal');
+      if (display) display.textContent = val.toFixed(1);
+      apiPost('/api/v1/motor/speed', { speed: val }).catch(function() {});
+    });
+  }
+
+  var speedDownBtn = document.getElementById('rcSpeedDown');
+  if (speedDownBtn) {
+    speedDownBtn.addEventListener('click', function() {
+      var slider = document.getElementById('rcSpeedSlider');
+      if (!slider) return;
+      var val = Math.max(-MAX_LINEAR, parseFloat(slider.value) - 0.1);
+      val = Math.round(val * 10) / 10;
+      slider.value = val;
+      rcState.speed = val;
+      var display = document.getElementById('rcSpeedVal');
+      if (display) display.textContent = val.toFixed(1);
+      apiPost('/api/v1/motor/speed', { speed: val }).catch(function() {});
+    });
+  }
+
+  var speedStopBtn = document.getElementById('rcSpeedStop');
+  if (speedStopBtn) {
+    speedStopBtn.addEventListener('click', function() {
+      var slider = document.getElementById('rcSpeedSlider');
+      if (slider) slider.value = 0;
+      rcState.speed = 0;
+      var display = document.getElementById('rcSpeedVal');
+      if (display) display.textContent = '0.0';
+      apiPost('/api/v1/motor/speed', { speed: 0 }).catch(function() {});
+    });
+  }
+
+  var steerSlider = document.getElementById('rcSteerSlider');
+  if (steerSlider) {
+    steerSlider.addEventListener('input', function() {
+      var val = parseFloat(this.value);
+      rcState.steering = val;
+      var display = document.getElementById('rcSteerVal');
+      if (display) display.textContent = val.toFixed(1);
+      apiPost('/api/v1/motor/steering', { angle: val }).catch(function() {});
+    });
+  }
+
+  var steerLeftBtn = document.getElementById('rcSteerLeft');
+  if (steerLeftBtn) {
+    steerLeftBtn.addEventListener('click', function() {
+      var slider = document.getElementById('rcSteerSlider');
+      if (!slider) return;
+      var val = Math.max(-MAX_ANGULAR, parseFloat(slider.value) - 0.1);
+      val = Math.round(val * 10) / 10;
+      slider.value = val;
+      rcState.steering = val;
+      var display = document.getElementById('rcSteerVal');
+      if (display) display.textContent = val.toFixed(1);
+      apiPost('/api/v1/motor/steering', { angle: val }).catch(function() {});
+    });
+  }
+
+  var steerRightBtn = document.getElementById('rcSteerRight');
+  if (steerRightBtn) {
+    steerRightBtn.addEventListener('click', function() {
+      var slider = document.getElementById('rcSteerSlider');
+      if (!slider) return;
+      var val = Math.min(MAX_ANGULAR, parseFloat(slider.value) + 0.1);
+      val = Math.round(val * 10) / 10;
+      slider.value = val;
+      rcState.steering = val;
+      var display = document.getElementById('rcSteerVal');
+      if (display) display.textContent = val.toFixed(1);
+      apiPost('/api/v1/motor/steering', { angle: val }).catch(function() {});
+    });
+  }
+
+  var steerCenterBtn = document.getElementById('rcSteerCenter');
+  if (steerCenterBtn) {
+    steerCenterBtn.addEventListener('click', function() {
+      var slider = document.getElementById('rcSteerSlider');
+      if (slider) slider.value = 0;
+      rcState.steering = 0;
+      var display = document.getElementById('rcSteerVal');
+      if (display) display.textContent = '0.0';
+      apiPost('/api/v1/motor/steering', { angle: 0 }).catch(function() {});
+    });
+  }
+
+  function isRemoteControlPageVisible() {
+    var page = document.getElementById('page-remote-control');
+    if (!page) return false;
+    return page.classList.contains('active');
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if (!isRemoteControlPageVisible()) return;
+
+    var key = e.key.toLowerCase();
+    var changed = false;
+
+    if (key === 'w') {
+      rcState.linear_x = Math.min(MAX_LINEAR, rcState.linear_x + 0.1);
+      rcState.linear_x = Math.round(rcState.linear_x * 10) / 10;
+      changed = true;
+    } else if (key === 's') {
+      rcState.linear_x = Math.max(-MAX_LINEAR, rcState.linear_x - 0.1);
+      rcState.linear_x = Math.round(rcState.linear_x * 10) / 10;
+      changed = true;
+    } else if (key === 'a') {
+      rcState.angular_z = Math.min(MAX_ANGULAR, rcState.angular_z + 0.2);
+      rcState.angular_z = Math.round(rcState.angular_z * 10) / 10;
+      changed = true;
+    } else if (key === 'd') {
+      rcState.angular_z = Math.max(-MAX_ANGULAR, rcState.angular_z - 0.2);
+      rcState.angular_z = Math.round(rcState.angular_z * 10) / 10;
+      changed = true;
+    } else if (key === ' ') {
+      e.preventDefault();
+      apiPost('/api/v1/motor/emergency_brake', {}).catch(function() {});
+      return;
+    } else if (key === 'q') {
+      var slider = document.getElementById('rcSpeedSlider');
+      if (slider) {
+        var val = Math.max(-MAX_LINEAR, parseFloat(slider.value) - 0.1);
+        val = Math.round(val * 10) / 10;
+        slider.value = val;
+        rcState.speed = val;
+        var display = document.getElementById('rcSpeedVal');
+        if (display) display.textContent = val.toFixed(1);
+        apiPost('/api/v1/motor/speed', { speed: val }).catch(function() {});
+      }
+      return;
+    } else if (key === 'e') {
+      var slider = document.getElementById('rcSpeedSlider');
+      if (slider) {
+        var val = Math.min(MAX_LINEAR, parseFloat(slider.value) + 0.1);
+        val = Math.round(val * 10) / 10;
+        slider.value = val;
+        rcState.speed = val;
+        var display = document.getElementById('rcSpeedVal');
+        if (display) display.textContent = val.toFixed(1);
+        apiPost('/api/v1/motor/speed', { speed: val }).catch(function() {});
+      }
+      return;
+    }
+
+    if (changed) {
+      e.preventDefault();
+      var joyLinearEl = document.getElementById('rcJoyLinear');
+      var joyAngularEl = document.getElementById('rcJoyAngular');
+      if (joyLinearEl) joyLinearEl.textContent = rcState.linear_x.toFixed(2);
+      if (joyAngularEl) joyAngularEl.textContent = rcState.angular_z.toFixed(2);
+      apiPost('/api/v1/motor/joystick', { linear_x: rcState.linear_x, angular_z: rcState.angular_z }).catch(function() {});
+    }
+  });
+
+  var modeManualBtn = document.getElementById('rcModeManual');
+  if (modeManualBtn) {
+    modeManualBtn.addEventListener('click', function() {
+      apiPost('/api/v1/agv/control', { command: 'start', parameters: ['manual'] })
+        .then(function() { showToast('切换到手动模式', 'success'); })
+        .catch(function() { showToast('切换手动模式失败', 'error'); });
+    });
+  }
+
+  var modeAutoBtn = document.getElementById('rcModeAuto');
+  if (modeAutoBtn) {
+    modeAutoBtn.addEventListener('click', function() {
+      apiPost('/api/v1/agv/control', { command: 'start', parameters: ['auto'] })
+        .then(function() { showToast('切换到自动模式', 'success'); })
+        .catch(function() { showToast('切换自动模式失败', 'error'); });
+    });
+  }
+
+  var emergencyBtn = document.getElementById('rcEmergencyBrake');
+  if (emergencyBtn) {
+    emergencyBtn.addEventListener('click', function() {
+      apiPost('/api/v1/motor/emergency_brake', {})
+        .then(function() { showToast('紧急制动已触发', 'error'); })
+        .catch(function() { showToast('紧急制动失败', 'error'); });
+    });
+  }
+
+  pollIntervals.push(setInterval(function() {
+    apiGet('/api/v1/motor/state').then(function(data) {
+      if (!data) return;
+      var el;
+
+      el = document.getElementById('rcCurrentSpeed');
+      if (el) {
+        var avgSpeed = ((data.left_wheel_speed || 0) + (data.right_wheel_speed || 0)) / 2;
+        el.textContent = avgSpeed.toFixed(3);
+      }
+
+      el = document.getElementById('rcCurrentSteering');
+      if (el) el.textContent = (data.steering_angle || 0).toFixed(3);
+
+      el = document.getElementById('rcLeftWheel');
+      if (el) el.textContent = (data.left_wheel_speed || 0).toFixed(3);
+
+      el = document.getElementById('rcRightWheel');
+      if (el) el.textContent = (data.right_wheel_speed || 0).toFixed(3);
+
+      el = document.getElementById('rcMotorMode');
+      if (el) el.textContent = data.mode || '--';
+
+      el = document.getElementById('rcBrakeActive');
+      if (el) el.textContent = data.brake_active ? 'Yes' : 'No';
+
+      el = document.getElementById('rcLeftCurrent');
+      if (el) el.textContent = (data.left_motor_current || 0).toFixed(3);
+
+      el = document.getElementById('rcRightCurrent');
+      if (el) el.textContent = (data.right_motor_current || 0).toFixed(3);
+
+      el = document.getElementById('rcTargetSpeed');
+      if (el) el.textContent = (data.target_speed || 0).toFixed(3);
+
+      el = document.getElementById('rcTargetSteering');
+      if (el) el.textContent = (data.target_steering_angle || 0).toFixed(3);
+    }).catch(function() {});
+  }, 500));
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   initNavigation();
   initSliders();
@@ -1740,6 +2102,7 @@ document.addEventListener('DOMContentLoaded', function() {
   initPlcConfig();
   initSimulation();
   initVisionTrain();
+  initRemoteControl();
 
   addLog('System initialized', 'info');
 

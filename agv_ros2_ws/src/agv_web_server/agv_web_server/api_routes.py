@@ -7,6 +7,7 @@ AGV Web 后端 API 路由模块
 """
 
 import asyncio
+import math
 import time
 from collections import defaultdict
 from functools import wraps
@@ -17,12 +18,12 @@ from typing import List, Optional
 
 from agv_interfaces.msg import (
     AGVStatus, PlcData, IOState, YoloResult, WiFiStatus, 
-    BluetoothDevice, BatteryState, Scan3DData
+    BluetoothDevice, BatteryState, Scan3DData, MotorState, DriveCommand
 )
 from agv_interfaces.srv import (
     ControlAGV, ReadPlc, WritePlc, SetIO, TrainModel, 
     ConnectWiFi, ConnectBluetooth, SetCharging, SetModel, 
-    GenerateScanMap, StartScan
+    GenerateScanMap, StartScan, SetSpeed, SetSteering
 )
 from agv_interfaces.action import NavigateTo, Patrol
 from geometry_msgs.msg import Twist
@@ -1150,5 +1151,141 @@ def create_api_router(ros_bridge):
         if not result['success']:
             raise HTTPException(status_code=400, detail=result.get('error', 'Operation failed'))
         return result
+
+    # ==================== 电机舵轮控制 API ====================
+
+    ros_bridge.create_subscription('/motor_state', MotorState)
+    ros_bridge.create_publisher('/drive_command', DriveCommand)
+
+    class MotorSpeedRequest(BaseModel):
+        speed: float = 0.0
+
+        @field_validator('speed')
+        @classmethod
+        def validate_speed(cls, v):
+            if abs(v) > 5.0:
+                raise ValueError('Speed out of range (-5.0, 5.0)')
+            return v
+
+    class MotorSteeringRequest(BaseModel):
+        angle: float = 0.0
+
+        @field_validator('angle')
+        @classmethod
+        def validate_steering(cls, v):
+            if abs(v) > 1.57:
+                raise ValueError('Steering angle out of range (-1.57, 1.57) rad')
+            return v
+
+    class JoystickRequest(BaseModel):
+        linear_x: float = 0.0
+        angular_z: float = 0.0
+        duration: float = 0.0
+
+        @field_validator('linear_x')
+        @classmethod
+        def validate_linear(cls, v):
+            if abs(v) > 3.0:
+                raise ValueError('Linear velocity out of range (-3.0, 3.0)')
+            return v
+
+        @field_validator('angular_z')
+        @classmethod
+        def validate_angular(cls, v):
+            if abs(v) > 3.0:
+                raise ValueError('Angular velocity out of range (-3.0, 3.0)')
+            return v
+
+    @router.get('/motor/state')
+    async def get_motor_state():
+        cached = _get_cached_response('motor_state')
+        if cached is not None:
+            return cached
+        msg = ros_bridge.get_latest_message('/motor_state')
+        if msg is None:
+            raise HTTPException(status_code=404, detail='Motor state not available')
+        result = _msg_to_dict(msg)
+        _set_cached_response('motor_state', result)
+        return result
+
+    @router.post('/motor/speed')
+    async def set_motor_speed(body: MotorSpeedRequest):
+        future = ros_bridge.call_service('/set_speed', SetSpeed, {
+            'speed': body.speed,
+        })
+        if future is None:
+            raise HTTPException(status_code=503, detail='Service /set_speed not available')
+        try:
+            response = await asyncio.wait_for(asyncio.wrap_future(future), timeout=5.0)
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=504, detail='Service /set_speed timed out')
+        return {'success': response.success, 'message': response.message, 'actual_speed': response.actual_speed}
+
+    @router.post('/motor/steering')
+    async def set_motor_steering(body: MotorSteeringRequest):
+        future = ros_bridge.call_service('/set_steering', SetSteering, {
+            'angle': body.angle,
+        })
+        if future is None:
+            raise HTTPException(status_code=503, detail='Service /set_steering not available')
+        try:
+            response = await asyncio.wait_for(asyncio.wrap_future(future), timeout=5.0)
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=504, detail='Service /set_steering timed out')
+        return {'success': response.success, 'message': response.message, 'actual_angle': response.actual_angle}
+
+    @router.post('/motor/joystick')
+    async def joystick_control(body: JoystickRequest):
+        ros_bridge.publish('/cmd_vel', {
+            'linear': {'x': body.linear_x, 'y': 0.0, 'z': 0.0},
+            'angular': {'x': 0.0, 'y': 0.0, 'z': body.angular_z},
+        })
+        return {'success': True, 'message': 'Joystick command sent', 'linear_x': body.linear_x, 'angular_z': body.angular_z}
+
+    @router.post('/motor/emergency_brake')
+    async def emergency_brake():
+        future = ros_bridge.call_service('/emergency_brake', Trigger, {})
+        if future is None:
+            raise HTTPException(status_code=503, detail='Service /emergency_brake not available')
+        try:
+            response = await asyncio.wait_for(asyncio.wrap_future(future), timeout=5.0)
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=504, detail='Service /emergency_brake timed out')
+        return {'success': response.success, 'message': response.message}
+
+    # ==================== 路径规划 API ====================
+
+    @router.post('/path/plan')
+    async def plan_path(body: NavigateRequest):
+        ros_bridge.publish('/target_pose', {
+            'header': {'frame_id': 'map'},
+            'pose': {
+                'position': {'x': body.target_x, 'y': body.target_y, 'z': 0.0},
+                'orientation': {'x': 0.0, 'y': 0.0, 'z': math.sin(body.target_theta / 2), 'w': math.cos(body.target_theta / 2)},
+            }
+        })
+        return {'success': True, 'message': 'Path planning request sent'}
+
+    @router.post('/path/clear')
+    async def clear_path():
+        future = ros_bridge.call_service('/path_clear', Trigger, {})
+        if future is None:
+            raise HTTPException(status_code=503, detail='Service /path_clear not available')
+        try:
+            response = await asyncio.wait_for(asyncio.wrap_future(future), timeout=5.0)
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=504, detail='Service /path_clear timed out')
+        return {'success': response.success, 'message': response.message}
+
+    @router.post('/path/map_reset')
+    async def reset_map():
+        future = ros_bridge.call_service('/map_reset', Trigger, {})
+        if future is None:
+            raise HTTPException(status_code=503, detail='Service /map_reset not available')
+        try:
+            response = await asyncio.wait_for(asyncio.wrap_future(future), timeout=5.0)
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=504, detail='Service /map_reset timed out')
+        return {'success': response.success, 'message': response.message}
 
     return router

@@ -1,0 +1,21 @@
+motor_controller:
+  ros__parameters:
+    max_speed: 1.5
+    max_steering_angle: 0.7854
+    min_steering_angle: -0.7854
+    wheel_diameter: 0.2
+    wheel_base: 0.5
+    track_width: 0.4
+    speed_kp: 2.0
+    speed_ki: 0.1
+    speed_kd: 0.05
+    steering_kp: 3.0
+    steering_ki: 0.0
+    steering_kd: 0.2
+    control_rate: 50.0
+    acceleration_limit: 2.0
+    deceleration_limit: 3.0
+    steering_rate_limit: 1.5
+    speed_deadband: 0.01
+    steering_deadband: 0.01
+    simulate: false

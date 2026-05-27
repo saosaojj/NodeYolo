@@ -1,0 +1,5 @@
+float64 left_motor_value
+float64 right_motor_value
+float64 steering_servo_value
+string mode
+builtin_interfaces/Time timestamp

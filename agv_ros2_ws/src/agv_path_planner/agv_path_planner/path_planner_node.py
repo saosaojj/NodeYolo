@@ -12,6 +12,8 @@ import sensor_msgs.msg as sensor_msgs
 import std_msgs.msg as std_msgs
 import std_srvs.srv as std_srvs
 
+from agv_interfaces.msg import AGVStatus
+
 from .smooth_astar import SmoothAStar
 
 
@@ -62,6 +64,8 @@ class PathPlannerNode(Node):
         self.occupancy_grid = np.zeros((self.grid_height, self.grid_width), dtype=np.int8)
         self.current_path = None
         self.path_cost_value = 0.0
+        self.current_robot_x = 0.0
+        self.current_robot_y = 0.0
         
         self.smooth_astar = SmoothAStar(
             self.occupancy_grid,
@@ -109,6 +113,12 @@ class PathPlannerNode(Node):
             'map_update',
             self.map_update_callback,
             qos_profile
+        )
+        self.agv_status_sub = self.create_subscription(
+            AGVStatus,
+            'agv_status',
+            self.agv_status_callback,
+            10
         )
         
         self.path_plan_service = self.create_service(
@@ -451,19 +461,23 @@ class PathPlannerNode(Node):
         self.update_map_from_laser(msg)
 
     def target_pose_callback(self, msg: geometry_msgs.PoseStamped):
-        start = (0.0, 0.0)
+        start = (self.current_robot_x, self.current_robot_y)
         goal = (msg.pose.position.x, msg.pose.position.y)
-        
-        self.get_logger().info(f'Received target: {goal}')
+
+        self.get_logger().info(f'收到目标: {goal}，起点: ({self.current_robot_x:.2f}, {self.current_robot_y:.2f})')
         
         path = self.plan_path(start, goal)
         
         if path:
             self.current_path = path
-            self.get_logger().info(f'Path planned with {len(path)} waypoints')
+            self.get_logger().info(f'路径规划完成，共 {len(path)} 个路径点')
         else:
             self.current_path = None
-            self.get_logger().warn('Failed to plan path')
+            self.get_logger().warn('路径规划失败')
+
+    def agv_status_callback(self, msg):
+        self.current_robot_x = msg.x
+        self.current_robot_y = msg.y
 
     def map_update_callback(self, msg: nav_msgs.OccupancyGrid):
         if msg.info.width != self.grid_width or msg.info.height != self.grid_height:

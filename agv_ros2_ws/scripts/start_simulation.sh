@@ -8,8 +8,14 @@ source "$WORKSPACE_DIR/install/setup.bash"
 
 export AGV_SIMULATION=1
 
+ros2 launch agv_config config_manager.launch.py &
+CONFIG_PID=$!
+
 ros2 launch agv_navigation navigation.launch.py simulation:=true &
 NAV_PID=$!
+
+ros2 launch agv_motor_controller motor_controller.launch.py simulate:=true &
+MOTOR_PID=$!
 
 ros2 launch agv_io_controller io_controller.launch.py simulation:=true &
 IO_PID=$!
@@ -26,4 +32,16 @@ WEB_PID=$!
 ros2 launch agv_connectivity connectivity.launch.py &
 CONN_PID=$!
 
-wait $NAV_PID $IO_PID $PLC_PID $VISION_PID $WEB_PID $CONN_PID
+ros2 launch agv_power_manager power_manager.launch.py simulate:=true &
+POWER_PID=$!
+
+ros2 launch agv_path_planner path_planner.launch.py &
+PLANNER_PID=$!
+
+ros2 launch agv_video_stream video_stream.launch.py &
+VIDEO_PID=$!
+
+ros2 launch agv_3d_scanner 3d_scanner.launch.py &
+SCANNER_PID=$!
+
+wait $CONFIG_PID $NAV_PID $MOTOR_PID $IO_PID $PLC_PID $VISION_PID $WEB_PID $CONN_PID $POWER_PID $PLANNER_PID $VIDEO_PID $SCANNER_PID

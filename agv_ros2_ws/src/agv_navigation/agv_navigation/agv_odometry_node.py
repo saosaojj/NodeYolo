@@ -3,7 +3,7 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist, Quaternion
 from nav_msgs.msg import Odometry
-from agv_interfaces.msg import AGVStatus
+from agv_interfaces.msg import MotorState
 from tf2_ros import TransformBroadcaster
 from geometry_msgs.msg import TransformStamped
 
@@ -23,6 +23,8 @@ class AgvOdometryNode(Node):
         self.declare_parameter('covariance_linear', 0.01)
         self.declare_parameter('covariance_angular', 0.005)
         self.declare_parameter('covariance_linear_angular', 0.001)
+        self.declare_parameter('use_encoder_odometry', False)
+        self.declare_parameter('track_width', 0.4)
 
         self.frame_id = self.get_parameter('frame_id').value
         self.child_frame_id = self.get_parameter('child_frame_id').value
@@ -31,6 +33,8 @@ class AgvOdometryNode(Node):
         self._cov_linear = self.get_parameter('covariance_linear').value
         self._cov_angular = self.get_parameter('covariance_angular').value
         self._cov_linear_angular = self.get_parameter('covariance_linear_angular').value
+        self._use_encoder_odometry = self.get_parameter('use_encoder_odometry').value
+        self._track_width = self.get_parameter('track_width').value
 
         self.x = self.get_parameter('initial_x').value
         self.y = self.get_parameter('initial_y').value
@@ -39,6 +43,11 @@ class AgvOdometryNode(Node):
         self.linear_vel = 0.0
         self.angular_vel = 0.0
         self.prev_time = self.get_clock().now()
+
+        # 编码器里程计数据
+        self._encoder_left_speed = 0.0
+        self._encoder_right_speed = 0.0
+        self._encoder_received = False
 
         self._drift_correction_x = 0.0
         self._drift_correction_y = 0.0
@@ -51,8 +60,11 @@ class AgvOdometryNode(Node):
         self.cmd_vel_out_sub = self.create_subscription(
             Twist, 'cmd_vel_out', self.cmd_vel_out_callback, 10)
 
+        # 订阅电机状态，获取编码器轮速
+        self.motor_state_sub = self.create_subscription(
+            MotorState, 'motor_state', self.motor_state_callback, 10)
+
         self.odom_pub = self.create_publisher(Odometry, 'odom', 10)
-        self.agv_status_pub = self.create_publisher(AGVStatus, 'agv_status', 10)
 
         self.tf_broadcaster = TransformBroadcaster(self)
 
@@ -60,8 +72,23 @@ class AgvOdometryNode(Node):
         self.publish_timer = self.create_timer(publish_period, self.publish_loop)
 
     def cmd_vel_out_callback(self, msg):
-        self.linear_vel = msg.linear.x
-        self.angular_vel = msg.angular.z
+        if not self._use_encoder_odometry:
+            self.linear_vel = msg.linear.x
+            self.angular_vel = msg.angular.z
+
+    def motor_state_callback(self, msg):
+        """电机状态回调，处理轮式编码器数据"""
+        self._encoder_left_speed = msg.left_wheel_speed
+        self._encoder_right_speed = msg.right_wheel_speed
+        self._encoder_received = True
+
+        if self._use_encoder_odometry:
+            # 使用差速驱动模型从编码器轮速计算线速度和角速度
+            self.linear_vel = (self._encoder_left_speed + self._encoder_right_speed) / 2.0
+            if self._track_width > 0:
+                self.angular_vel = (self._encoder_right_speed - self._encoder_left_speed) / self._track_width
+            else:
+                self.angular_vel = 0.0
 
     def apply_drift_correction(self, correction_x, correction_y, correction_theta):
         self._drift_correction_x += correction_x
@@ -145,19 +172,6 @@ class AgvOdometryNode(Node):
         odom.twist.twist.angular.z = self.angular_vel
         odom.twist.covariance = self._compute_twist_covariance(dt)
         self.odom_pub.publish(odom)
-
-        status = AGVStatus()
-        status.x = effective_x
-        status.y = effective_y
-        status.theta = effective_theta
-        status.linear_velocity = self.linear_vel
-        status.angular_velocity = self.angular_vel
-        status.battery_level = 100.0
-        status.mode = 'idle'
-        status.emergency_stop = False
-        status.active_alarms = []
-        status.timestamp = current_time.to_msg()
-        self.agv_status_pub.publish(status)
 
     @staticmethod
     def _yaw_to_quaternion(yaw):

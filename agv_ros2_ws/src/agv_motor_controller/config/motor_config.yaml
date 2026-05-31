@@ -6,6 +6,7 @@ motor_controller:
     wheel_diameter: 0.2
     wheel_base: 0.5
     track_width: 0.4
+    drive_type: "ackermann"
     speed_kp: 2.0
     speed_ki: 0.1
     speed_kd: 0.05
@@ -19,3 +20,14 @@ motor_controller:
     speed_deadband: 0.01
     steering_deadband: 0.01
     simulate: false
+    encoder_ticks_per_revolution: 1000
+    gear_ratio: 20.0
+    use_encoder_feedback: false
+    max_motor_current: 10.0
+    stall_speed_threshold: 0.05
+    stall_time_threshold: 2.0
+    publish_motor_odom: true
+    motor_odom_frame: "motor_odom"
+    yaw_correction_gain: 0.5
+    motor_time_constant: 0.1
+    friction_coefficient: 0.1

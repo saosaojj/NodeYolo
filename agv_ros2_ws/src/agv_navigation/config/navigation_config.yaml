@@ -14,6 +14,17 @@ agv_navigator:
     goal_tolerance_xy: 0.1
     goal_tolerance_theta: 0.1
     obstacle_distance_threshold: 0.3
+    goal_timeout: 300.0
+    obstacle_replan_threshold: 0.2
+    velocity_obstacle_horizon: 2.0
+    lookahead_distance: 0.5
+    lookahead_gain: 0.3
+    min_lookahead_distance: 0.2
+    max_navigation_speed: 0.8
+    approach_speed: 0.3
+    curvature_speed_factor: 2.0
+    replan_cooldown: 3.0
+    max_replan_attempts: 3
 
 agv_odometry:
   ros__parameters:

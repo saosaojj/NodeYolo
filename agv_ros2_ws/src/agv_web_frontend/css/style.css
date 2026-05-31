@@ -1683,3 +1683,225 @@ input[type="range"]::-webkit-slider-thumb:hover {
     padding: 16px;
   }
 }
+
+/* ==================== 科技工业风增强 ==================== */
+
+#content::after {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-image:
+    linear-gradient(30deg, rgba(0,212,170,0.02) 12%, transparent 12.5%, transparent 87%, rgba(0,212,170,0.02) 87.5%),
+    linear-gradient(150deg, rgba(0,212,170,0.02) 12%, transparent 12.5%, transparent 87%, rgba(0,212,170,0.02) 87.5%),
+    linear-gradient(30deg, rgba(0,212,170,0.02) 12%, transparent 12.5%, transparent 87%, rgba(0,212,170,0.02) 87.5%),
+    linear-gradient(150deg, rgba(0,212,170,0.02) 12%, transparent 12.5%, transparent 87%, rgba(0,212,170,0.02) 87.5%);
+  background-size: 80px 140px;
+  background-position: 0 0, 0 0, 40px 70px, 40px 70px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.stat-card::after {
+  content: '';
+  position: absolute;
+  top: -100%;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent-primary), transparent);
+  animation: scan-line 4s ease-in-out infinite;
+  opacity: 0.3;
+}
+
+@keyframes scan-line {
+  0%, 100% { top: -5%; }
+  50% { top: 105%; }
+}
+
+.card {
+  position: relative;
+}
+
+.card::before, .card::after {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-color: rgba(0,212,170,0.3);
+  border-style: solid;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.card::before {
+  top: -1px;
+  left: -1px;
+  border-width: 2px 0 0 2px;
+  border-radius: 2px 0 0 0;
+}
+
+.card::after {
+  bottom: -1px;
+  right: -1px;
+  border-width: 0 2px 2px 0;
+  border-radius: 0 0 2px 0;
+}
+
+#sidebar::after {
+  content: '01001101 11010110 00110101 10101100 01110010 11001010';
+  position: absolute;
+  bottom: 60px;
+  left: 0;
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: rgba(0,212,170,0.06);
+  word-break: break-all;
+  line-height: 1.4;
+  padding: 0 12px;
+  pointer-events: none;
+  animation: data-stream 20s linear infinite;
+  z-index: 0;
+}
+
+@keyframes data-stream {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-50%); }
+}
+
+.btn-emergency {
+  animation: emergency-pulse 2s ease-in-out infinite;
+}
+
+@keyframes emergency-pulse {
+  0%, 100% { box-shadow: 0 4px 20px rgba(255,71,87,0.3); }
+  50% { box-shadow: 0 4px 30px rgba(255,71,87,0.6), 0 0 60px rgba(255,71,87,0.2); }
+}
+
+.topbar-left::after {
+  content: '';
+  display: inline-block;
+  width: 40px;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent-primary), transparent);
+  margin-left: 12px;
+  vertical-align: middle;
+}
+
+.page-header h2::after {
+  content: '';
+  display: block;
+  width: 60px;
+  height: 3px;
+  margin-top: 8px;
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--accent-primary),
+    var(--accent-primary) 4px,
+    transparent 4px,
+    transparent 8px
+  );
+  border-radius: 2px;
+}
+
+.stat-value::after {
+  content: '|';
+  animation: blink-cursor 1s step-end infinite;
+  color: var(--accent-primary);
+  opacity: 0.5;
+  margin-left: 2px;
+  font-weight: 300;
+}
+
+@keyframes blink-cursor {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0; }
+}
+
+.camera-feed::before {
+  content: 'REC \25CF';
+  position: absolute;
+  top: 12px;
+  left: 16px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--status-danger);
+  z-index: 2;
+  letter-spacing: 2px;
+  animation: rec-blink 1.5s ease-in-out infinite;
+}
+
+.camera-feed::after {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border: 1px solid rgba(0,212,170,0.15);
+  border-radius: calc(var(--radius-lg) - 8px);
+  pointer-events: none;
+  z-index: 2;
+}
+
+@keyframes rec-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+#app::after {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.02'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 9997;
+  opacity: 0.4;
+}
+
+.status-dot.connected {
+  animation: status-glow 2s ease-in-out infinite;
+}
+
+@keyframes status-glow {
+  0%, 100% { box-shadow: 0 0 8px var(--status-success); }
+  50% { box-shadow: 0 0 16px var(--status-success), 0 0 30px rgba(0,212,146,0.3); }
+}
+
+.input-field {
+  border-left: 3px solid var(--border-dim);
+  transition: all 0.2s ease;
+}
+
+.input-field:focus {
+  border-left-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px var(--accent-glow), inset 0 0 20px rgba(0,212,170,0.03);
+}
+
+.sidebar-title::after {
+  content: 'v2.0';
+  font-size: 8px;
+  font-weight: 600;
+  color: var(--accent-primary);
+  background: var(--accent-subtle);
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin-left: 8px;
+  letter-spacing: 1px;
+  vertical-align: super;
+}
+
+#mapCanvas, #pathMapCanvas {
+  background:
+    linear-gradient(rgba(0,212,170,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,212,170,0.03) 1px, transparent 1px),
+    var(--bg-surface);
+  background-size: 20px 20px, 20px 20px, 100% 100%;
+}
+
+.data-table th {
+  background: linear-gradient(180deg, rgba(0,212,170,0.08), rgba(0,212,170,0.02));
+  border-bottom: 2px solid rgba(0,212,170,0.2);
+}
+
+.nav-item.active {
+  background: linear-gradient(90deg, var(--accent-subtle), transparent);
+  border-left: 2px solid var(--accent-primary);
+}

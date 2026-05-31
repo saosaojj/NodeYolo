@@ -1,5 +1,8 @@
 import subprocess
 import time
+import json
+from collections import deque
+from datetime import datetime
 
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
@@ -23,6 +26,19 @@ class WiFiManagerNode(Node):
         self.declare_parameter('scan_cache_ttl', 30.0)
         self.declare_parameter('quality_check_interval', 10.0)
 
+        # 增强功能1: WiFi信号质量历史 - 跟踪RSSI随时间变化，检测退化趋势
+        self.declare_parameter('signal_history_size', 200)
+        self.declare_parameter('degradation_threshold', 15)
+        self.declare_parameter('degradation_window', 10)
+
+        # 增强功能2: 指数退避自动重连
+        self.declare_parameter('backoff_base_delay', 2.0)
+        self.declare_parameter('backoff_max_delay', 120.0)
+        self.declare_parameter('backoff_max_attempts', 10)
+
+        # 增强功能4: 连接统计
+        self.declare_parameter('stats_publish_rate', 30.0)
+
         self._current_ssid = ''
         self._current_password = ''
         self._known_networks = self.get_parameter('known_networks').value
@@ -36,6 +52,41 @@ class WiFiManagerNode(Node):
         self._reconnect_attempts = 0
         self._max_reconnect_attempts = 5
 
+        # 增强功能1: 信号质量历史记录
+        self._signal_history_size = self.get_parameter('signal_history_size').value
+        self._signal_history = deque(maxlen=self._signal_history_size)
+        self._signal_timestamp_history = deque(maxlen=self._signal_history_size)
+        self._degradation_threshold = self.get_parameter('degradation_threshold').value
+        self._degradation_window = self.get_parameter('degradation_window').value
+        self._degradation_detected = False
+
+        # 增强功能2: 指数退避参数
+        self._backoff_base_delay = self.get_parameter('backoff_base_delay').value
+        self._backoff_max_delay = self.get_parameter('backoff_max_delay').value
+        self._backoff_max_attempts = self.get_parameter('backoff_max_attempts').value
+        self._backoff_current_delay = self._backoff_base_delay
+        self._last_reconnect_attempt_time = 0.0
+
+        # 增强功能3: 网络扫描与排名
+        self._ranked_networks = []
+
+        # 增强功能4: 连接统计
+        self._stats_publish_rate = self.get_parameter('stats_publish_rate').value
+        self._connection_stats = {
+            'total_uptime_seconds': 0.0,
+            'total_downtime_seconds': 0.0,
+            'disconnect_count': 0,
+            'reconnect_count': 0,
+            'connection_start_time': None,
+            'disconnection_start_time': None,
+            'latency_history': deque(maxlen=100),
+            'avg_latency_ms': 0.0,
+            'last_connected_ssid': '',
+            'total_bytes_sent': 0,
+            'total_bytes_recv': 0,
+        }
+        self._last_stats_time = time.time()
+
         qos_profile = QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE)
 
         self._wifi_status_pub = self.create_publisher(
@@ -43,6 +94,18 @@ class WiFiManagerNode(Node):
 
         self._wifi_scan_results_pub = self.create_publisher(
             WiFiStatus, 'wifi_scan_results', qos_profile)
+
+        # 增强功能1: 信号质量趋势发布
+        self._signal_trend_pub = self.create_publisher(
+            String, 'wifi_signal_trend', qos_profile)
+
+        # 增强功能4: 连接统计发布
+        self._wifi_stats_pub = self.create_publisher(
+            String, 'wifi_stats', qos_profile)
+
+        # 增强功能3: 排名网络发布
+        self._ranked_networks_pub = self.create_publisher(
+            String, 'wifi_ranked_networks', qos_profile)
 
         self._connect_wifi_srv = self.create_service(
             ConnectWiFi, 'connect_wifi', self.connect_wifi_callback)
@@ -53,8 +116,19 @@ class WiFiManagerNode(Node):
         self._scan_wifi_srv = self.create_service(
             Trigger, 'scan_wifi', self.scan_wifi_callback)
 
+        # 增强功能4: 获取连接统计服务
+        self._get_stats_srv = self.create_service(
+            Trigger, 'get_wifi_stats', self.get_stats_callback)
+
         check_rate = self.get_parameter('check_rate').get_parameter_value().double_value
         self._timer = self.create_timer(1.0 / check_rate, self.check_status_callback)
+
+        # 增强功能4: 统计发布定时器
+        self._stats_timer = self.create_timer(
+            1.0 / self._stats_publish_rate, self.publish_stats_callback)
+
+        # 增强功能1: 信号趋势检测定时器
+        self._trend_timer = self.create_timer(15.0, self.detect_signal_trend)
 
         self._nmcli_available = self._check_nmcli()
 
@@ -116,9 +190,62 @@ class WiFiManagerNode(Node):
         quality = self._get_signal_quality()
         self._connection_quality = quality
 
+        # 增强功能1: 记录信号质量历史
+        self._signal_history.append(quality)
+        self._signal_timestamp_history.append(now)
+
         if quality < 20 and quality > 0:
-            self.get_logger().warn(f'WiFi signal quality is poor: {quality}%')
+            self.get_logger().warn(f'WiFi信号质量差: {quality}%')
             self._attempt_fallback()
+
+    # 增强功能1: 信号退化趋势检测
+    def detect_signal_trend(self):
+        if len(self._signal_history) < self._degradation_window:
+            return
+
+        recent_signals = list(self._signal_history)[-self._degradation_window:]
+        older_signals = list(self._signal_history)[-2 * self._degradation_window:-self._degradation_window]
+
+        if len(older_signals) < self._degradation_window:
+            return
+
+        recent_avg = sum(recent_signals) / len(recent_signals)
+        older_avg = sum(older_signals) / len(older_signals)
+        degradation = older_avg - recent_avg
+
+        trend_msg = String()
+        if degradation > self._degradation_threshold:
+            self._degradation_detected = True
+            self.get_logger().warn(
+                f'检测到WiFi信号退化趋势: 平均信号从 {older_avg:.1f}% 降至 {recent_avg:.1f}% (下降 {degradation:.1f}%)')
+            trend_data = {
+                'trend': 'degrading',
+                'older_avg': round(older_avg, 1),
+                'recent_avg': round(recent_avg, 1),
+                'degradation': round(degradation, 1),
+                'timestamp': datetime.now().isoformat(),
+            }
+        elif degradation < -self._degradation_threshold:
+            self._degradation_detected = False
+            trend_data = {
+                'trend': 'improving',
+                'older_avg': round(older_avg, 1),
+                'recent_avg': round(recent_avg, 1),
+                'improvement': round(-degradation, 1),
+                'timestamp': datetime.now().isoformat(),
+            }
+        else:
+            self._degradation_detected = False
+            trend_data = {
+                'trend': 'stable',
+                'older_avg': round(older_avg, 1),
+                'recent_avg': round(recent_avg, 1),
+                'change': round(degradation, 1),
+                'timestamp': datetime.now().isoformat(),
+            }
+
+        trend_msg.data = json.dumps(trend_data, ensure_ascii=False)
+        self._signal_trend_pub.publish(trend_msg)
 
     def _attempt_fallback(self):
         if not self._known_networks:
@@ -128,14 +255,15 @@ class WiFiManagerNode(Node):
             current_idx = known_ssids.index(self._current_ssid)
             if current_idx < len(known_ssids) - 1:
                 fallback_ssid = known_ssids[current_idx + 1]
-                self.get_logger().info(f'Attempting fallback to network: {fallback_ssid}')
+                self.get_logger().info(f'尝试回退到网络: {fallback_ssid}')
                 stdout, _ = self._run_nmcli(
                     ['device', 'wifi', 'connect', fallback_ssid],
                     timeout=30)
                 if stdout and 'successfully' in stdout.lower():
-                    self.get_logger().info(f'Fallback to {fallback_ssid} successful')
+                    self.get_logger().info(f'回退到 {fallback_ssid} 成功')
                     self._current_ssid = fallback_ssid
                     self._reconnect_attempts = 0
+                    self._backoff_current_delay = self._backoff_base_delay
 
     def _get_cached_scan_results(self):
         now = time.time()
@@ -168,7 +296,47 @@ class WiFiManagerNode(Node):
 
         self._scan_cache = results
         self._scan_cache_time = now
+
+        # 增强功能3: 更新排名网络列表
+        self._update_ranked_networks(results)
+
         return results
+
+    # 增强功能3: WiFi网络扫描与排名
+    def _update_ranked_networks(self, scan_results):
+        known_ssids = set()
+        for n in self._known_networks:
+            if isinstance(n, str):
+                known_ssids.add(n)
+            elif isinstance(n, dict):
+                known_ssids.add(n.get('ssid', ''))
+
+        scored_networks = []
+        for entry in scan_results:
+            if not entry.get('ssid'):
+                continue
+            score = entry.get('signal', 0)
+            if entry.get('ssid') in known_ssids:
+                score += 20
+            if entry.get('security'):
+                score += 10
+            scored_networks.append({
+                'ssid': entry['ssid'],
+                'signal': entry.get('signal', 0),
+                'security': entry.get('security', ''),
+                'score': score,
+            })
+
+        scored_networks.sort(key=lambda x: x['score'], reverse=True)
+        self._ranked_networks = scored_networks
+
+        ranked_msg = String()
+        ranked_data = {
+            'networks': scored_networks[:10],
+            'timestamp': datetime.now().isoformat(),
+        }
+        ranked_msg.data = json.dumps(ranked_data, ensure_ascii=False)
+        self._ranked_networks_pub.publish(ranked_msg)
 
     def check_status_callback(self):
         status_msg = WiFiStatus()
@@ -193,6 +361,10 @@ class WiFiManagerNode(Node):
                     if len(parts) >= 3 and parts[2]:
                         active_ssid = parts[0]
                         break
+
+        now = time.time()
+        dt = now - self._last_stats_time
+        self._last_stats_time = now
 
         if active_ssid:
             status_msg.connected = True
@@ -228,8 +400,19 @@ class WiFiManagerNode(Node):
             if self.get_parameter('auto_reconnect').get_parameter_value().bool_value:
                 self._current_ssid = active_ssid
                 self._reconnect_attempts = 0
+                self._backoff_current_delay = self._backoff_base_delay
 
             self._check_connection_quality()
+
+            # 增强功能4: 更新连接统计 - 在线时间
+            self._connection_stats['total_uptime_seconds'] += dt
+            if self._connection_stats['connection_start_time'] is None:
+                self._connection_stats['connection_start_time'] = now
+                self._connection_stats['last_connected_ssid'] = active_ssid
+            self._connection_stats['disconnection_start_time'] = None
+
+            # 增强功能4: 测量延迟
+            self._measure_latency()
         else:
             status_msg.connected = False
             status_msg.ssid = ''
@@ -237,11 +420,80 @@ class WiFiManagerNode(Node):
             status_msg.signal_strength = 0
             status_msg.mac_address = ''
 
+            # 增强功能4: 更新连接统计 - 离线时间
+            self._connection_stats['total_downtime_seconds'] += dt
+            if self._connection_stats['disconnection_start_time'] is None:
+                self._connection_stats['disconnection_start_time'] = now
+                if self._connection_stats['connection_start_time'] is not None:
+                    self._connection_stats['disconnect_count'] += 1
+            self._connection_stats['connection_start_time'] = None
+
             if (self.get_parameter('auto_reconnect').get_parameter_value().bool_value
                     and self._current_ssid):
-                self._attempt_reconnect()
+                self._attempt_reconnect_with_backoff()
 
         self._wifi_status_pub.publish(status_msg)
+
+    # 增强功能4: 延迟测量
+    def _measure_latency(self):
+        try:
+            result = subprocess.run(
+                ['ping', '-c', '1', '-W', '2', '8.8.8.8'],
+                capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                for line in result.stdout.split('\n'):
+                    if 'time=' in line:
+                        try:
+                            latency_str = line.split('time=')[1].split(' ')[0]
+                            latency = float(latency_str)
+                            self._connection_stats['latency_history'].append(latency)
+                            if len(self._connection_stats['latency_history']) > 0:
+                                self._connection_stats['avg_latency_ms'] = (
+                                    sum(self._connection_stats['latency_history']) /
+                                    len(self._connection_stats['latency_history']))
+                        except (ValueError, IndexError):
+                            pass
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+
+    # 增强功能2: 指数退避自动重连
+    def _attempt_reconnect_with_backoff(self):
+        if not self._current_ssid:
+            return
+
+        now = time.time()
+        if now - self._last_reconnect_attempt_time < self._backoff_current_delay:
+            return
+
+        if self._reconnect_attempts >= self._backoff_max_attempts:
+            self.get_logger().warn('达到最大退避重连次数，尝试回退网络')
+            self._attempt_fallback()
+            self._reconnect_attempts = 0
+            self._backoff_current_delay = self._backoff_base_delay
+            return
+
+        self._reconnect_attempts += 1
+        self._last_reconnect_attempt_time = now
+
+        self.get_logger().info(
+            f'尝试重连 {self._current_ssid} (第{self._reconnect_attempts}次, '
+            f'退避延迟: {self._backoff_current_delay:.1f}秒)')
+
+        stdout, _ = self._run_nmcli(
+            ['device', 'wifi', 'connect', self._current_ssid],
+            timeout=30)
+        if stdout and 'successfully' in stdout.lower():
+            self.get_logger().info(f'自动重连到 {self._current_ssid} 成功')
+            self._reconnect_attempts = 0
+            self._backoff_current_delay = self._backoff_base_delay
+            self._connection_stats['reconnect_count'] += 1
+        else:
+            # 指数退避: 延迟翻倍，但不超过最大值
+            self._backoff_current_delay = min(
+                self._backoff_current_delay * 2, self._backoff_max_delay)
+            self.get_logger().warn(
+                f'自动重连到 {self._current_ssid} 失败 '
+                f'(第{self._reconnect_attempts}次，下次延迟: {self._backoff_current_delay:.1f}秒)')
 
     def _attempt_reconnect(self):
         if not self._current_ssid:
@@ -283,6 +535,7 @@ class WiFiManagerNode(Node):
             self._current_ssid = request.ssid
             self._current_password = request.password
             self._reconnect_attempts = 0
+            self._backoff_current_delay = self._backoff_base_delay
 
             ip_stdout, _ = self._run_nmcli(
                 ['-t', '-f', 'IP4.ADDRESS', 'dev', 'show', self.get_parameter('interface').get_parameter_value().string_value],
@@ -372,10 +625,49 @@ class WiFiManagerNode(Node):
         self._scan_cache = results
         self._scan_cache_time = time.time()
 
+        # 增强功能3: 更新排名网络列表
+        self._update_ranked_networks(results)
+
         response.success = True
         response.message = 'WiFi scan completed'
 
         return response
+
+    # 增强功能4: 获取连接统计回调
+    def get_stats_callback(self, request, response):
+        stats = self._compute_stats()
+        response.success = True
+        response.message = json.dumps(stats, ensure_ascii=False)
+        return response
+
+    # 增强功能4: 计算连接统计
+    def _compute_stats(self):
+        uptime = self._connection_stats['total_uptime_seconds']
+        downtime = self._connection_stats['total_downtime_seconds']
+        total = uptime + downtime
+        availability = (uptime / total * 100.0) if total > 0 else 0.0
+
+        return {
+            'uptime_seconds': round(uptime, 1),
+            'downtime_seconds': round(downtime, 1),
+            'availability_percent': round(availability, 2),
+            'disconnect_count': self._connection_stats['disconnect_count'],
+            'reconnect_count': self._connection_stats['reconnect_count'],
+            'avg_latency_ms': round(self._connection_stats['avg_latency_ms'], 2),
+            'current_ssid': self._current_ssid,
+            'last_connected_ssid': self._connection_stats['last_connected_ssid'],
+            'signal_quality': self._connection_quality,
+            'degradation_detected': self._degradation_detected,
+            'backoff_delay': round(self._backoff_current_delay, 1),
+            'reconnect_attempts': self._reconnect_attempts,
+        }
+
+    # 增强功能4: 发布连接统计
+    def publish_stats_callback(self):
+        stats = self._compute_stats()
+        stats_msg = String()
+        stats_msg.data = json.dumps(stats, ensure_ascii=False)
+        self._wifi_stats_pub.publish(stats_msg)
 
 
 def main(args=None):

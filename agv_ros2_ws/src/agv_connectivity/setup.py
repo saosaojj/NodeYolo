@@ -26,6 +26,7 @@ setup(
         'console_scripts': [
             'wifi_manager_node = agv_connectivity.wifi_manager_node:main',
             'bluetooth_manager_node = agv_connectivity.bluetooth_manager_node:main',
+            'connectivity_manager_node = agv_connectivity.connectivity_manager_node:main',
         ],
     },
 )

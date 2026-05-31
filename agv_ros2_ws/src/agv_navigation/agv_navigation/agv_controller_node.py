@@ -2,7 +2,7 @@ import math
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist, PoseStamped
-from agv_interfaces.msg import AGVStatus
+from agv_interfaces.msg import AGVStatus, MotorState
 from agv_interfaces.srv import ControlAGV
 
 
@@ -24,6 +24,8 @@ class AgvControllerNode(Node):
         self.declare_parameter('cmd_vel_timeout', 1.0)
         self.declare_parameter('velocity_ramp_rate', 1.0)
         self.declare_parameter('anti_windup_limit', 5.0)
+        self.declare_parameter('use_motor_feedback', False)
+        self.declare_parameter('low_battery_threshold', 20.0)
 
         self.wheel_base = self.get_parameter('wheel_base').value
         self.max_linear_vel = self.get_parameter('max_linear_vel').value
@@ -38,6 +40,8 @@ class AgvControllerNode(Node):
         self._cmd_vel_timeout = self.get_parameter('cmd_vel_timeout').value
         self._velocity_ramp_rate = self.get_parameter('velocity_ramp_rate').value
         self._anti_windup_limit = self.get_parameter('anti_windup_limit').value
+        self._use_motor_feedback = self.get_parameter('use_motor_feedback').value
+        self._low_battery_threshold = self.get_parameter('low_battery_threshold').value
 
         self.current_x = 0.0
         self.current_y = 0.0
@@ -69,10 +73,22 @@ class AgvControllerNode(Node):
 
         self._last_cmd_vel_time = self.get_clock().now()
 
+        # 电机反馈数据
+        self._motor_linear_vel = 0.0
+        self._motor_angular_vel = 0.0
+        self._motor_state_received = False
+
+        # 看门狗超时日志控制
+        self._watchdog_logged = False
+
         self.cmd_vel_sub = self.create_subscription(
             Twist, 'cmd_vel', self.cmd_vel_callback, 10)
         self.target_pose_sub = self.create_subscription(
             PoseStamped, 'target_pose', self.target_pose_callback, 10)
+
+        # 订阅电机状态，获取实际轮速
+        self.motor_state_sub = self.create_subscription(
+            MotorState, 'motor_state', self.motor_state_callback, 10)
 
         self.cmd_vel_out_pub = self.create_publisher(Twist, 'cmd_vel_out', 10)
         self.agv_status_pub = self.create_publisher(AGVStatus, 'agv_status', 10)
@@ -88,11 +104,12 @@ class AgvControllerNode(Node):
             self.cmd_vel_linear = msg.linear.x
             self.cmd_vel_angular = msg.angular.z
             self._last_cmd_vel_time = self.get_clock().now()
+            self._watchdog_logged = False
 
     def target_pose_callback(self, msg):
         self.target_x = msg.pose.position.x
         self.target_y = msg.pose.position.y
-        q = msg.pose.orientation
+        q = msg.pose.pose.orientation if hasattr(msg.pose, 'pose') else msg.pose.orientation
         siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
         cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
         self.target_theta = math.atan2(siny_cosp, cosy_cosp)
@@ -103,6 +120,17 @@ class AgvControllerNode(Node):
         self.prev_angular_error = 0.0
         self._integral_linear_error = 0.0
         self._integral_angular_error = 0.0
+
+    def motor_state_callback(self, msg):
+        """电机状态回调，从实际轮速计算线速度和角速度"""
+        left_speed = msg.left_wheel_speed
+        right_speed = msg.right_wheel_speed
+        self._motor_linear_vel = (left_speed + right_speed) / 2.0
+        if self.wheel_base > 0:
+            self._motor_angular_vel = (right_speed - left_speed) / self.wheel_base
+        else:
+            self._motor_angular_vel = 0.0
+        self._motor_state_received = True
 
     def control_callback(self, request, response):
         cmd = request.command.lower()
@@ -226,6 +254,10 @@ class AgvControllerNode(Node):
             if elapsed > self._cmd_vel_timeout:
                 self.cmd_vel_linear = 0.0
                 self.cmd_vel_angular = 0.0
+                if not self._watchdog_logged:
+                    self.get_logger().warn(
+                        f'手动模式下未在 {self._cmd_vel_timeout:.1f} 秒内收到速度指令，已发送零速度指令')
+                    self._watchdog_logged = True
         else:
             self.cmd_vel_linear = 0.0
             self.cmd_vel_angular = 0.0
@@ -240,14 +272,30 @@ class AgvControllerNode(Node):
                                 min(self.max_angular_vel, smoothed_angular))
         self.cmd_vel_out_pub.publish(cmd_out)
 
-        self.current_linear_vel = cmd_out.linear.x
-        self.current_angular_vel = cmd_out.angular.z
+        # 根据是否使用电机反馈选择速度来源
+        if self._use_motor_feedback and self._motor_state_received:
+            self.current_linear_vel = self._motor_linear_vel
+            self.current_angular_vel = self._motor_angular_vel
+        else:
+            self.current_linear_vel = cmd_out.linear.x
+            self.current_angular_vel = cmd_out.angular.z
 
         self.current_theta += self.current_angular_vel * dt
         self.current_theta = math.atan2(math.sin(self.current_theta),
                                         math.cos(self.current_theta))
         self.current_x += self.current_linear_vel * math.cos(self.current_theta) * dt
         self.current_y += self.current_linear_vel * math.sin(self.current_theta) * dt
+
+        # 低电量自动切换充电模式
+        if self.battery_level < self._low_battery_threshold and self.mode not in ('charging', 'error'):
+            self.get_logger().warn(
+                f'电量低于阈值 {self._low_battery_threshold:.1f}%，自动切换到充电模式')
+            self.mode = 'charging'
+            self.has_target = False
+            self.cmd_vel_linear = 0.0
+            self.cmd_vel_angular = 0.0
+            self._smoothed_linear = 0.0
+            self._smoothed_angular = 0.0
 
         status = AGVStatus()
         status.x = self.current_x

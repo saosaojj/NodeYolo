@@ -302,8 +302,6 @@
           </div>
         </div>
 
-        <div class="page" id="page-plc">
-
         <div class="page" id="page-remote-control">
           <div class="page-header">
             <h2>远程操控</h2>
@@ -1139,6 +1137,132 @@
           </div>
         </div>
 
+        <div class="page" id="page-vision-train">
+          <div class="page-header">
+            <h2>模型训练</h2>
+            <div class="page-header-actions">
+              <button class="btn btn-primary" id="vtStartTrain">🚀 开始训练</button>
+              <button class="btn btn-warning" id="vtCancelTrain">⏹ 取消训练</button>
+            </div>
+          </div>
+
+          <div class="hero-stats">
+            <div class="stat-card">
+              <div class="stat-card-header">
+                <span class="stat-label">训练状态</span>
+                <div class="stat-icon">🎓</div>
+              </div>
+              <div class="stat-value" id="vtTrainStatus">就绪</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-header">
+                <span class="stat-label">当前轮次</span>
+                <div class="stat-icon">📊</div>
+              </div>
+              <div class="stat-value"><span id="vtCurrentEpoch">0</span><span class="stat-unit">/ <span id="vtTotalEpochs">0</span></span></div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-header">
+                <span class="stat-label">训练精度</span>
+                <div class="stat-icon">🎯</div>
+              </div>
+              <div class="stat-value"><span id="vtAccuracy">--</span><span class="stat-unit">%</span></div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-header">
+                <span class="stat-label">训练损失</span>
+                <div class="stat-icon">📉</div>
+              </div>
+              <div class="stat-value"><span id="vtLoss">--</span></div>
+            </div>
+          </div>
+
+          <div class="card-grid cols-2">
+            <div class="card">
+              <div class="card-header">⚙️ 训练参数</div>
+              <div class="form-group">
+                <label>数据集路径</label>
+                <input type="text" class="input-field" id="vtDatasetPath" placeholder="/path/to/dataset">
+              </div>
+              <div class="form-group">
+                <label>基础模型</label>
+                <select class="input-field" id="vtBaseModel">
+                  <option value="yolov8n.pt">YOLOv8 Nano</option>
+                  <option value="yolov8s.pt">YOLOv8 Small</option>
+                  <option value="yolov8m.pt">YOLOv8 Medium</option>
+                  <option value="yolov8l.pt">YOLOv8 Large</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>训练轮次</label>
+                <input type="number" class="input-field" id="vtEpochs" value="50">
+              </div>
+              <div class="form-group">
+                <label>学习率</label>
+                <input type="number" class="input-field" id="vtLearningRate" value="0.001" step="0.0001">
+              </div>
+              <div class="form-group">
+                <label>图像尺寸</label>
+                <select class="input-field" id="vtImgSize">
+                  <option value="640">640</option>
+                  <option value="1280">1280</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>批次大小</label>
+                <input type="number" class="input-field" id="vtBatchSize" value="16">
+              </div>
+              <div class="form-group">
+                <label>微调模型路径 (可选)</label>
+                <input type="text" class="input-field" id="vtFineTuneModel" placeholder="留空则从头训练">
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-header">📊 训练进度</div>
+              <div class="training-progress" style="margin:16px 0;">
+                <div class="progress-bar">
+                  <div class="progress-fill" id="vtProgressFill" style="width: 0%"></div>
+                </div>
+                <div class="progress-info">
+                  <span id="vtProgressText">就绪</span>
+                  <span id="vtProgressPercent">0%</span>
+                </div>
+              </div>
+              <div class="position-display">
+                <div class="pos-item">
+                  <span class="pos-label">模型类型</span>
+                  <span class="pos-value" id="vtModelType">--</span>
+                </div>
+                <div class="pos-item">
+                  <span class="pos-label">训练时长</span>
+                  <span class="pos-value" id="vtTrainTime">--</span>
+                </div>
+                <div class="pos-item">
+                  <span class="pos-label">输出路径</span>
+                  <span class="pos-value" id="vtOutputPath">--</span>
+                </div>
+              </div>
+              <div style="margin-top:16px;">
+                <div class="card-header" style="font-size:11px;">模型导出</div>
+                <div class="form-group">
+                  <label>模型路径</label>
+                  <input type="text" class="input-field" id="vtExportModelPath" placeholder="best.pt 模型路径">
+                </div>
+                <div class="form-group">
+                  <label>导出格式</label>
+                  <select class="input-field" id="vtExportFormat">
+                    <option value="onnx">ONNX</option>
+                    <option value="torchscript">TorchScript</option>
+                    <option value="openvino">OpenVINO</option>
+                    <option value="rknn">RKNN (瑞芯微)</option>
+                  </select>
+                </div>
+                <button class="btn btn-primary btn-block" id="vtExportModel">📤 导出模型</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="page" id="page-simulation">
           <div class="page-header">
             <h2>仿真测试</h2>
@@ -1215,6 +1339,21 @@
   </div>
 
   <div id="toastContainer"></div>
+
+  <div class="modal" id="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <span id="modalTitle">确认</span>
+        <button class="modal-close" onclick="closeModal()">×</button>
+      </div>
+      <div class="modal-body" id="modalBody">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" id="modalConfirmBtn">确认</button>
+      </div>
+    </div>
+  </div>
 
   <div class="modal" id="emergencyModal">
     <div class="modal-content">

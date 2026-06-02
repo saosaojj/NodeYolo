@@ -1525,25 +1525,9 @@ function initVisionTrain() {
   function loadVisionInfo() {
     apiGet('/api/v1/vision/info').then(function(data) {
       appState.visionTrain.modelInfo = data || {};
-      renderVisionInfo(data);
+      var el = document.getElementById('vtModelType');
+      if (el) el.textContent = (data && data.model_name) ? data.model_name : '--';
     }).catch(function() {});
-  }
-
-  function renderVisionInfo(info) {
-    if (!info) return;
-    var el = document.getElementById('visionModelInfo');
-    if (el) {
-      el.innerHTML = '<div class="info-grid">' +
-        '<div class="info-item"><span class="info-label">模型名称</span><span class="info-value">' + (info.model_name || '--') + '</span></div>' +
-        '<div class="info-item"><span class="info-label">模型路径</span><span class="info-value">' + (info.model_path || '--') + '</span></div>' +
-        '<div class="info-item"><span class="info-label">推理设备</span><span class="info-value">' + (info.device || '--') + '</span></div>' +
-        '<div class="info-item"><span class="info-label">置信度</span><span class="info-value">' + (info.confidence || '--') + '</span></div>' +
-        '<div class="info-item"><span class="info-label">IOU阈值</span><span class="info-value">' + (info.iou_threshold || '--') + '</span></div>' +
-        '<div class="info-item"><span class="info-label">Supervision</span><span class="info-value">' + (info.supervision_available ? '✅ 已安装' : '❌ 未安装') + '</span></div>' +
-        '<div class="info-item"><span class="info-label">YOLO</span><span class="info-value">' + (info.yolo_available ? '✅ 已安装' : '❌ 未安装') + '</span></div>' +
-        '<div class="info-item"><span class="info-label">仿真模式</span><span class="info-value">' + (info.simulation_enabled ? '🧪 已启用' : '🔴 已关闭') + '</span></div>' +
-        '</div>';
-    }
   }
 
   function loadTrainingStatus() {
@@ -1555,152 +1539,103 @@ function initVisionTrain() {
 
   function renderTrainingStatus(status) {
     if (!status) return;
-    var el = document.getElementById('trainingStatusDisplay');
+    var statusText = status.status || 'idle';
+    var el = document.getElementById('vtTrainStatus');
     if (el) {
-      var statusText = status.status || 'idle';
-      var statusColor = statusText === 'completed' ? '#4caf50' : statusText === 'failed' ? '#f44336' : statusText === 'training' || statusText === 'fine_tuning' ? '#ff9800' : '#9e9e9e';
-      el.innerHTML = '<div class="training-status-card" style="border-left: 4px solid ' + statusColor + '">' +
-        '<div class="status-header"><span class="status-badge" style="background:' + statusColor + '">' + statusText + '</span>' +
-        (status.fine_tune ? '<span class="badge-fine-tune">微调模式</span>' : '') + '</div>' +
-        '<div class="status-details">' +
-        '<div>轮次: ' + (status.epoch || 0) + ' / ' + (status.total_epochs || 0) + '</div>' +
-        '<div>模型: ' + (status.model_type || '--') + '</div>' +
-        (status.loss ? '<div>Loss: ' + status.loss + '</div>' : '') +
-        (status.map50 ? '<div>mAP50: ' + status.map50 + '</div>' : '') +
-        (status.training_time ? '<div>耗时: ' + (status.training_time / 60).toFixed(1) + ' 分钟</div>' : '') +
-        (status.best_model_path ? '<div>最佳模型: ' + status.best_model_path + '</div>' : '') +
-        (status.error ? '<div class="error-text">错误: ' + status.error + '</div>' : '') +
-        '</div></div>';
+      var labels = { idle: '就绪', training: '训练中', fine_tuning: '微调中', completed: '已完成', failed: '失败' };
+      el.textContent = labels[statusText] || statusText;
     }
-  }
+    el = document.getElementById('vtCurrentEpoch');
+    if (el) el.textContent = status.epoch || 0;
+    el = document.getElementById('vtTotalEpochs');
+    if (el) el.textContent = status.total_epochs || 0;
+    el = document.getElementById('vtLoss');
+    if (el) el.textContent = status.loss ? parseFloat(status.loss).toFixed(4) : '--';
+    el = document.getElementById('vtAccuracy');
+    if (el) el.textContent = status.map50 ? (parseFloat(status.map50) * 100).toFixed(1) : '--';
+    el = document.getElementById('vtTrainTime');
+    if (el) el.textContent = status.training_time ? (status.training_time / 60).toFixed(1) + ' min' : '--';
+    el = document.getElementById('vtOutputPath');
+    if (el) el.textContent = status.best_model_path || '--';
 
-  function loadAvailableModels() {
-    apiGet('/api/v1/vision/models').then(function(data) {
-      appState.visionTrain.availableModels = data.models || [];
-      renderAvailableModels(data.models);
-    }).catch(function() {});
-  }
-
-  function renderAvailableModels(models) {
-    if (!models) return;
-    var el = document.getElementById('availableModelsList');
-    if (el) {
-      el.innerHTML = '';
-      models.forEach(function(m) {
-        var item = document.createElement('div');
-        item.className = 'model-item';
-        item.innerHTML = '<div class="model-name">' + m.name + '</div>' +
-          '<div class="model-desc">' + m.description + '</div>' +
-          (m.size ? '<div class="model-size">' + m.size + '</div>' : '');
-        item.addEventListener('click', function() {
-          var modelSelect = document.getElementById('trainModelType');
-          if (modelSelect) modelSelect.value = m.name;
-        });
-        el.appendChild(item);
-      });
+    // 更新进度条
+    var progressEl = document.getElementById('vtProgressFill');
+    var progressText = document.getElementById('vtProgressText');
+    var progressPercent = document.getElementById('vtProgressPercent');
+    if (status.total_epochs > 0) {
+      var pct = Math.round(((status.epoch || 0) / status.total_epochs) * 100);
+      if (progressEl) progressEl.style.width = pct + '%';
+      if (progressText) progressText.textContent = statusText === 'completed' ? '训练完成' : statusText === 'failed' ? '训练失败' : '训练中...';
+      if (progressPercent) progressPercent.textContent = pct + '%';
     }
-  }
-
-  // 加载模型按钮
-  var loadModelBtn = document.getElementById('loadVisionModel');
-  if (loadModelBtn) {
-    loadModelBtn.addEventListener('click', function() {
-      var modelPath = document.getElementById('visionModelPath').value;
-      var device = document.getElementById('visionDevice').value;
-      apiPost('/api/v1/vision/load_model', { model_path: modelPath, device: device }).then(function(data) {
-        showToast('模型加载成功: ' + data.model_name, 'success');
-        loadVisionInfo();
-      }).catch(function(err) {
-        showToast('模型加载失败', 'error');
-      });
-    });
   }
 
   // 开始训练按钮
-  var startTrainBtn = document.getElementById('startTraining');
+  var startTrainBtn = document.getElementById('vtStartTrain');
   if (startTrainBtn) {
     startTrainBtn.addEventListener('click', function() {
-      var payload = {
-        dataset_path: document.getElementById('trainDatasetPath').value,
-        model_type: document.getElementById('trainModelType').value,
-        epochs: parseInt(document.getElementById('trainEpochs').value) || 100,
-        learning_rate: parseFloat(document.getElementById('trainLearningRate').value) || 0.01,
-        imgsz: parseInt(document.getElementById('trainImgsz').value) || 640,
-        batch_size: parseInt(document.getElementById('trainBatchSize').value) || 16,
-        augmentation: document.getElementById('trainAugmentation').checked,
-      };
-      var fineTuneFrom = document.getElementById('fineTuneModelPath').value;
-      if (fineTuneFrom) {
-        payload.fine_tune_from = fineTuneFrom;
+      var datasetPath = document.getElementById('vtDatasetPath');
+      var baseModel = document.getElementById('vtBaseModel');
+      var epochs = document.getElementById('vtEpochs');
+      var lr = document.getElementById('vtLearningRate');
+      var imgSize = document.getElementById('vtImgSize');
+      var batchSize = document.getElementById('vtBatchSize');
+      var fineTuneModel = document.getElementById('vtFineTuneModel');
+
+      if (!datasetPath || !datasetPath.value.trim()) {
+        showToast('请输入数据集路径', 'error');
+        return;
       }
+
+      var payload = {
+        dataset_path: datasetPath.value,
+        model_type: baseModel ? baseModel.value : 'yolov8n',
+        epochs: epochs ? parseInt(epochs.value) || 50 : 50,
+        learning_rate: lr ? parseFloat(lr.value) || 0.001 : 0.001,
+        imgsz: imgSize ? parseInt(imgSize.value) || 640 : 640,
+        batch_size: batchSize ? parseInt(batchSize.value) || 16 : 16,
+      };
+      var ftModel = fineTuneModel ? fineTuneModel.value.trim() : '';
+      if (ftModel) {
+        payload.fine_tune_from = ftModel;
+      }
+
       apiPost('/api/v1/vision/train', payload).then(function(data) {
         showToast('训练已启动', 'success');
         startTrainingPolling();
       }).catch(function(err) {
-        showToast('训练启动失败', 'error');
-      });
-    });
-  }
-
-  // 微调按钮
-  var fineTuneBtn = document.getElementById('startFineTune');
-  if (fineTuneBtn) {
-    fineTuneBtn.addEventListener('click', function() {
-      var payload = {
-        dataset_path: document.getElementById('fineTuneDatasetPath').value,
-        base_model_path: document.getElementById('fineTuneBaseModel').value,
-        epochs: parseInt(document.getElementById('fineTuneEpochs').value) || 50,
-        learning_rate: parseFloat(document.getElementById('fineTuneLearningRate').value) || 0.001,
-        imgsz: parseInt(document.getElementById('fineTuneImgsz').value) || 640,
-        batch_size: parseInt(document.getElementById('fineTuneBatchSize').value) || 16,
-      };
-      apiPost('/api/v1/vision/fine_tune', payload).then(function(data) {
-        showToast('微调已启动', 'success');
-        startTrainingPolling();
-      }).catch(function(err) {
-        showToast('微调启动失败', 'error');
+        showToast('训练启动失败: ' + err.message, 'error');
       });
     });
   }
 
   // 取消训练按钮
-  var cancelBtn = document.getElementById('cancelTraining');
+  var cancelBtn = document.getElementById('vtCancelTrain');
   if (cancelBtn) {
     cancelBtn.addEventListener('click', function() {
       apiPost('/api/v1/vision/train/cancel', {}).then(function(data) {
         showToast('已请求取消训练', 'success');
-      }).catch(function() {});
-    });
-  }
-
-  // 验证模型按钮
-  var validateBtn = document.getElementById('validateModel');
-  if (validateBtn) {
-    validateBtn.addEventListener('click', function() {
-      apiPost('/api/v1/vision/validate', {}).then(function(data) {
-        var el = document.getElementById('validationResults');
-        if (el) {
-          el.innerHTML = '<div class="validation-results">' +
-            '<div>mAP50: ' + (data.map50 ? (data.map50 * 100).toFixed(2) + '%' : '--') + '</div>' +
-            '<div>mAP50-95: ' + (data.map50_95 ? (data.map50_95 * 100).toFixed(2) + '%' : '--') + '</div>' +
-            '<div>Precision: ' + (data.precision ? (data.precision * 100).toFixed(2) + '%' : '--') + '</div>' +
-            '<div>Recall: ' + (data.recall ? (data.recall * 100).toFixed(2) + '%' : '--') + '</div>' +
-            '</div>';
-        }
-        showToast('模型验证完成', 'success');
       }).catch(function() {
-        showToast('模型验证失败', 'error');
+        showToast('取消训练失败', 'error');
       });
     });
   }
 
   // 导出模型按钮
-  var exportBtn = document.getElementById('exportModel');
+  var exportBtn = document.getElementById('vtExportModel');
   if (exportBtn) {
     exportBtn.addEventListener('click', function() {
-      var format = document.getElementById('exportFormat').value;
-      apiPost('/api/v1/vision/export', { format: format }).then(function(data) {
-        showToast('模型导出成功: ' + data.export_path, 'success');
+      var modelPath = document.getElementById('vtExportModelPath');
+      var exportFormat = document.getElementById('vtExportFormat');
+      if (!modelPath || !modelPath.value.trim()) {
+        showToast('请输入模型路径', 'error');
+        return;
+      }
+      apiPost('/api/v1/vision/export', {
+        model_path: modelPath.value,
+        format: exportFormat ? exportFormat.value : 'onnx'
+      }).then(function(data) {
+        showToast('模型导出成功', 'success');
       }).catch(function() {
         showToast('模型导出失败', 'error');
       });
@@ -1724,7 +1659,6 @@ function initVisionTrain() {
   // 初始加载
   loadVisionInfo();
   loadTrainingStatus();
-  loadAvailableModels();
 }
 
 function initRemoteControl() {
@@ -2114,7 +2048,10 @@ document.addEventListener('DOMContentLoaded', function() {
     drawMap();
   });
 
-  document.getElementById('modal').addEventListener('click', function(e) {
-    if (e.target === this) closeModal();
-  });
+  var modalEl = document.getElementById('modal');
+  if (modalEl) {
+    modalEl.addEventListener('click', function(e) {
+      if (e.target === this) closeModal();
+    });
+  }
 });
